@@ -2114,6 +2114,8 @@ export default function App() {
   const updateRule = (id,up) => setBankRules(r => r.map(x=>x.id===id?{...x,...up}:x));
   const deleteRule = (id)    => setBankRules(r => r.filter(x=>x.id!==id));
 
+  const isMobile = useIsMobile();
+
   if (!dataLoaded) {
     return (
       <div style={{ minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui,-apple-system,sans-serif",color:"#94a3b8" }}>
@@ -2122,7 +2124,6 @@ export default function App() {
     );
   }
 
-  const isMobile   = useIsMobile();
   const smartBanks = applyRules(banks, bankRules);
   const matches    = buildMatches(expenses, smartBanks);
 

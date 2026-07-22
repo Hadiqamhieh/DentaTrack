@@ -2217,7 +2217,7 @@ export default function App() {
                 </div>
 
                 <div style={{ borderTop:"1px solid #f1f5f9",padding:"8px 16px 12px" }}>
-                  <button style={{ width:"100%",padding:"9px 0",border:"none",background:"transparent",color:"#94a3b8",fontSize:13,cursor:"pointer",textAlign:"left" }}>Sign out</button>
+                  <button onClick={()=>supabase.auth.signOut()} style={{ width:"100%",padding:"9px 0",border:"none",background:"transparent",color:"#94a3b8",fontSize:13,cursor:"pointer",textAlign:"left" }}>Sign out</button>
                 </div>
               </div>
             )}

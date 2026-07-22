@@ -578,9 +578,33 @@ const TaxPlanningModal = ({ defaultSalary, onClose }) => {
   );
 };
 
-const EmailReportModal = ({ agreement, onClose }) => {
+const EmailReportModal = ({ agreement, period, expectedPay, totalExp, net, practiceBreakdown, expenseByCategory, onClose }) => {
   const [email, setEmail] = useState("");
-  const [sent, setSent] = useState(false);
+  const [status, setStatus] = useState("idle"); // idle | sending | sent | error
+  const [error, setError] = useState("");
+
+  const send = async () => {
+    setStatus("sending");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const resp = await fetch("/api/email-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({
+          to: email,
+          corpName: agreement.corpName || agreement.name,
+          period, expectedPay, totalExp, net, practiceBreakdown, expenseByCategory,
+        }),
+      });
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json.error || "Could not send the report.");
+      setStatus("sent");
+    } catch (e) {
+      setError(e.message);
+      setStatus("error");
+    }
+  };
+
   return (
     <div className="dt-modal-overlay" style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000 }}>
       <Card className="dt-modal-card" style={{ width:420,padding:28,overflowY:"auto",maxHeight:"90vh" }}>
@@ -588,11 +612,14 @@ const EmailReportModal = ({ agreement, onClose }) => {
           <div style={{ fontSize:17,fontWeight:700,color:"#1e293b" }}>Email my P&L</div>
           <Btn variant="ghost" size="sm" onClick={onClose}>Close</Btn>
         </div>
-        {!sent ? (
+        {status!=="sent" ? (
           <>
-            <div style={{ fontSize:13,color:"#64748b",marginBottom:16 }}>We'll generate a P&L summary for June 2026 and send it as a PDF — handy for your accountant.</div>
+            <div style={{ fontSize:13,color:"#64748b",marginBottom:16 }}>We'll generate a P&L summary for {period} and send it as a PDF — handy for your accountant.</div>
             <Input label="Send to" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@email.com or accountant@firm.com" />
-            <Btn size="lg" onClick={()=>setSent(true)} style={{ justifyContent:"center", marginTop:16, width:"100%" }} disabled={!email}>Send report</Btn>
+            {status==="error" && <div style={{ background:"#fee2e2",color:"#991b1b",borderRadius:8,padding:"10px 14px",fontSize:13,marginTop:12 }}>{error}</div>}
+            <Btn size="lg" onClick={send} style={{ justifyContent:"center", marginTop:16, width:"100%" }} disabled={!email||status==="sending"}>
+              {status==="sending" ? "Sending…" : "Send report"}
+            </Btn>
           </>
         ) : (
           <div style={{ textAlign:"center",padding:"20px 0" }}>
@@ -651,6 +678,18 @@ const HomeTab = ({ production, expenses, banks, agreement, matches, practices, c
   const variance = deposits>0 ? (deposits - expectedPay) : 0;
   const net = expectedPay - totalExp;
 
+  const practiceBreakdown = practices.map(pr=>{
+    const prDeps = banks.filter(b=>b.type==="collection"&&b.practiceId===pr.id).reduce((s,b)=>s+b.amount,0);
+    const prLab  = pr.deductsLabFees ? production.filter(r=>r.practiceId===pr.id).reduce((s,r)=>s+(r.labFees||0),0) : 0;
+    return { name: pr.name, deposits: prDeps, labFees: prLab, pay: Math.max(0, prDeps - prLab) * (pr.pct/100) };
+  });
+  const expenseByCategory = {};
+  banks.filter(b=>b.type==="business"&&b.taxDeductible).forEach(b=>{
+    const cat = b.category || "Other";
+    expenseByCategory[cat] = (expenseByCategory[cat]||0) + Math.abs(b.amount)*(b.deductibleFraction??1);
+  });
+  const reportPeriod = new Date().toLocaleDateString(undefined,{ month:"long", year:"numeric" });
+
   const matchedExpIds  = new Set(matches.map(m=>m.expenseId));
   const matchedBankIds = new Set(matches.map(m=>m.bankId));
   const pendingExp     = expenses.filter(e=>e.taxDeductible&&!matchedExpIds.has(e.id));
@@ -662,7 +701,7 @@ const HomeTab = ({ production, expenses, banks, agreement, matches, practices, c
 
   return (
     <div style={{ display:"flex",flexDirection:"column",gap:20 }}>
-      {showEmail&&<EmailReportModal agreement={agreement} onClose={()=>setShowEmail(false)} />}
+      {showEmail&&<EmailReportModal agreement={agreement} period={reportPeriod} expectedPay={expectedPay} totalExp={totalExp} net={net} practiceBreakdown={practiceBreakdown} expenseByCategory={expenseByCategory} onClose={()=>setShowEmail(false)} />}
       {showTax&&<TaxPlanningModal defaultSalary={agreement.salary?agreement.salary*12:90000} onClose={()=>setShowTax(false)} />}
 
       {/* Underpayment alert */}

@@ -2114,8 +2114,6 @@ export default function App() {
   const updateRule = (id,up) => setBankRules(r => r.map(x=>x.id===id?{...x,...up}:x));
   const deleteRule = (id)    => setBankRules(r => r.filter(x=>x.id!==id));
 
-  const isMobile   = useIsMobile();
-
   if (!dataLoaded) {
     return (
       <div style={{ minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui,-apple-system,sans-serif",color:"#94a3b8" }}>
@@ -2124,6 +2122,7 @@ export default function App() {
     );
   }
 
+  const isMobile   = useIsMobile();
   const smartBanks = applyRules(banks, bankRules);
   const matches    = buildMatches(expenses, smartBanks);
 
@@ -2217,7 +2216,7 @@ export default function App() {
                 </div>
 
                 <div style={{ borderTop:"1px solid #f1f5f9",padding:"8px 16px 12px" }}>
-                  <button onClick={()=>supabase.auth.signOut()} style={{ width:"100%",padding:"9px 0",border:"none",background:"transparent",color:"#94a3b8",fontSize:13,cursor:"pointer",textAlign:"left" }}>Sign out</button>
+                  <button style={{ width:"100%",padding:"9px 0",border:"none",background:"transparent",color:"#000000",fontSize:13,cursor:"pointer",textAlign:"left" }}>Sign out</button>
                 </div>
               </div>
             )}

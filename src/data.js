@@ -124,7 +124,7 @@ export async function loadBanks(userId) {
     reviewed: b.reviewed, practiceId: b.practice_id, userTagged: b.user_tagged, autoTagged: b.auto_tagged,
     matchedRule: b.matched_rule, category: b.category, taxDeductible: b.tax_deductible,
     deductibleFraction: b.deductible_fraction, corpExpense: b.corp_expense, receipt: b.receipt,
-    notes: b.notes, manual: b.manual,
+    notes: b.notes, manual: b.manual, plaidTransactionId: b.plaid_transaction_id,
   }));
 }
 
@@ -135,6 +135,7 @@ export async function syncBanks(userId, banks) {
     matched_rule: isUuid(b.matchedRule) ? b.matchedRule : null, category: b.category,
     tax_deductible: b.taxDeductible, deductible_fraction: b.deductibleFraction,
     corp_expense: b.corpExpense, receipt: b.receipt, notes: b.notes, manual: b.manual || false,
+    plaid_transaction_id: b.plaidTransactionId || null,
   }));
   await replaceAll('bank_transactions', userId, rows);
 }
@@ -167,6 +168,7 @@ export async function loadConnectedAccounts(userId) {
   return data.map((a) => ({
     id: a.id, name: a.name, mask: a.mask, type: a.type, institution: a.institution,
     label: a.label, lastSync: a.last_sync, connected: a.connected,
+    plaidItemId: a.plaid_item_id, plaidAccountId: a.plaid_account_id,
   }));
 }
 
@@ -174,6 +176,7 @@ export async function syncConnectedAccounts(userId, accounts) {
   const rows = accounts.map((a) => ({
     id: a.id, user_id: userId, name: a.name, mask: a.mask, type: a.type, institution: a.institution,
     label: a.label, last_sync: a.lastSync, connected: a.connected,
+    plaid_item_id: a.plaidItemId || null, plaid_account_id: a.plaidAccountId || null,
   }));
   await replaceAll('connected_accounts', userId, rows);
 }

@@ -71,8 +71,10 @@ create table bank_transactions (
   receipt boolean,
   notes text,
   manual boolean default false,
+  plaid_transaction_id text,
   created_at timestamptz default now()
 );
+create unique index bank_transactions_plaid_txn_uidx on bank_transactions(plaid_transaction_id) where plaid_transaction_id is not null;
 
 create table bank_rules (
   id uuid primary key default gen_random_uuid(),
@@ -100,8 +102,33 @@ create table connected_accounts (
   label text,
   last_sync date,
   connected boolean default true,
+  plaid_item_id uuid,      -- references plaid_items(id), added below after that table exists
+  plaid_account_id text,   -- Plaid's id for this specific account within the item
   created_at timestamptz default now()
 );
+
+-- ── Plaid connections ───────────────────────────────────────────────
+-- One row per bank connection ("Item" in Plaid's terms). access_token is a
+-- sensitive credential that can pull real transaction data, so this table
+-- intentionally gets NO row-level-security policy granting select/insert to
+-- the anon/authenticated role. It is only ever read or written by serverless
+-- functions using the Supabase SERVICE ROLE key, which bypasses RLS — the
+-- browser can never see or query this table directly.
+create table plaid_items (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users on delete cascade not null,
+  item_id text not null unique,
+  access_token text not null,
+  institution_id text,
+  institution_name text,
+  cursor text,              -- pagination cursor for transactions/sync
+  created_at timestamptz default now()
+);
+alter table plaid_items enable row level security;
+-- No policies created on purpose — see note above.
+
+alter table connected_accounts add constraint connected_accounts_plaid_item_fkey
+  foreign key (plaid_item_id) references plaid_items(id) on delete cascade;
 
 -- ── Row Level Security ──────────────────────────────────────────────
 -- Turns on per-row ownership checks so one dentist's queries can never

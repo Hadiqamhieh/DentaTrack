@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { usePlaidLink } from "react-plaid-link";
 import { supabase } from "./supabaseClient";
 import {
   newId, loadProfile, saveProfile, loadPractices, syncPractices,
@@ -1394,138 +1395,87 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
 
 // ── Settings Tab ──────────────────────────────────────────────────────────────
 // Simulated Plaid-style account connect modal
-const MOCK_INSTITUTIONS = [
-  { id:"td",   name:"TD Bank",         logo:"🏦", accounts:[
-    { id:"td-chq",  name:"TD Chequing",      mask:"4821", type:"depository" },
-    { id:"td-sav",  name:"TD Savings",       mask:"3302", type:"depository" },
-    { id:"td-visa", name:"TD Visa",          mask:"7734", type:"credit"     },
-  ]},
-  { id:"rbc",  name:"RBC Royal Bank",   logo:"🏦", accounts:[
-    { id:"rbc-chq",  name:"RBC Chequing",    mask:"2241", type:"depository" },
-    { id:"rbc-visa", name:"RBC Visa",        mask:"5519", type:"credit"     },
-  ]},
-  { id:"bmo",  name:"BMO",              logo:"🏦", accounts:[
-    { id:"bmo-chq",  name:"BMO Chequing",    mask:"8843", type:"depository" },
-    { id:"bmo-mc",   name:"BMO Mastercard",  mask:"1127", type:"credit"     },
-  ]},
-  { id:"cibc", name:"CIBC",             logo:"🏦", accounts:[
-    { id:"cibc-chq", name:"CIBC Chequing",   mask:"6631", type:"depository" },
-    { id:"cibc-visa","name":"CIBC Visa",      mask:"9904", type:"credit"     },
-  ]},
-];
+// ── Real bank connection via Plaid Link ─────────────────────────────────────
+// Plaid Link is Plaid's own hosted widget: it shows a searchable list of
+// thousands of real banks and credit unions, handles the login/MFA flow
+// itself, and hands us back a public_token — we never see or store bank
+// passwords ourselves.
+const PlaidModal = ({ onConnect, onTransactionsSynced, onClose }) => {
+  const [linkToken, setLinkToken] = useState(null);
+  const [phase, setPhase] = useState("loading"); // loading | ready | connecting | syncing | done | error
+  const [error, setError] = useState("");
 
-const ACCOUNT_LABELS = ["Corp bank","Corp credit card","Personal — skip"];
-
-const PlaidModal = ({ onConnect, onClose }) => {
-  const [step, setStep] = useState("institution"); // institution | accounts | label | done
-  const [institution, setInstitution] = useState(null);
-  const [selected, setSelected] = useState({});  // accountId → true/false
-  const [labels, setLabels] = useState({});       // accountId → label string
-  const [connecting, setConnecting] = useState(false);
-
-  const toggleAccount = (id) => setSelected(s=>({...s,[id]:!s[id]}));
-  const selectedAccounts = institution?.accounts.filter(a=>selected[a.id])||[];
-
-  const connect = () => {
-    setConnecting(true);
-    setTimeout(()=>{
-      const connected = selectedAccounts.map(a=>({
-        ...a,
-        institution: institution.name,
-        label: labels[a.id]||ACCOUNT_LABELS[a.type==="credit"?1:0],
-        connected: true,
-        lastSync: new Date().toISOString().slice(0,10),
-      }));
-      onConnect(connected);
-      setStep("done");
-      setConnecting(false);
-    }, 1400);
+  const authedFetch = async (url, body) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token}` },
+      body: JSON.stringify(body || {}),
+    });
+    const json = await resp.json();
+    if (!resp.ok) throw new Error(json.error || "Request failed");
+    return json;
   };
+
+  useEffect(() => {
+    authedFetch("/api/plaid/create-link-token")
+      .then(({ link_token }) => { setLinkToken(link_token); setPhase("ready"); })
+      .catch(e => { setError(e.message); setPhase("error"); });
+  }, []);
+
+  const onSuccess = async (public_token, metadata) => {
+    setPhase("connecting");
+    try {
+      const { accounts } = await authedFetch("/api/plaid/exchange-public-token", {
+        public_token,
+        institution: metadata.institution,
+        accounts: metadata.accounts,
+      });
+      onConnect(accounts);
+      setPhase("syncing");
+      const synced = await authedFetch("/api/plaid/sync-transactions");
+      onTransactionsSynced?.(synced);
+      setPhase("done");
+    } catch (e) {
+      setError(e.message);
+      setPhase("error");
+    }
+  };
+
+  const { open, ready } = usePlaidLink({ token: linkToken, onSuccess });
 
   return (
     <div className="dt-modal-overlay" style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000 }}>
-      <Card className="dt-modal-card" style={{ width:460,padding:28,overflowY:"auto",maxHeight:"90vh" }}>
-        {step==="done" ? (
+      <Card className="dt-modal-card" style={{ width:440,padding:28,overflowY:"auto",maxHeight:"90vh" }}>
+        {phase==="done" ? (
           <div style={{ textAlign:"center",padding:"24px 0" }}>
             <div style={{ fontSize:36,marginBottom:12 }}>✅</div>
-            <div style={{ fontSize:16,fontWeight:700,color:"#1e293b",marginBottom:6 }}>Accounts connected</div>
-            <div style={{ fontSize:13,color:"#64748b",marginBottom:20 }}>Your bank feed will update automatically.</div>
+            <div style={{ fontSize:16,fontWeight:700,color:"#1e293b",marginBottom:6 }}>Bank connected</div>
+            <div style={{ fontSize:13,color:"#64748b",marginBottom:20 }}>Your transactions have been imported and will keep syncing.</div>
             <Btn onClick={onClose}>Done</Btn>
           </div>
         ) : (
           <>
             <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20 }}>
-              <div style={{ fontSize:16,fontWeight:700,color:"#1e293b" }}>
-                {step==="institution"?"Select your bank":step==="accounts"?"Select accounts":"Label accounts"}
-              </div>
+              <div style={{ fontSize:16,fontWeight:700,color:"#1e293b" }}>Connect your bank</div>
               <Btn variant="ghost" size="sm" onClick={onClose}>Close</Btn>
             </div>
 
-            {step==="institution"&&(
-              <div style={{ display:"flex",flexDirection:"column",gap:10 }}>
-                <div style={{ fontSize:13,color:"#64748b",marginBottom:6 }}>Connect your bank or credit card to automatically pull in deposits and expenses.</div>
-                {MOCK_INSTITUTIONS.map(inst=>(
-                  <div key={inst.id} onClick={()=>{ setInstitution(inst); setStep("accounts"); }}
-                    style={{ display:"flex",alignItems:"center",gap:12,padding:"14px 16px",border:"1px solid #e2e8f0",borderRadius:10,cursor:"pointer",background:"#fff",transition:"border 0.15s" }}
-                    onMouseEnter={e=>e.currentTarget.style.borderColor="#0F6E56"}
-                    onMouseLeave={e=>e.currentTarget.style.borderColor="#e2e8f0"}>
-                    <span style={{ fontSize:22 }}>{inst.logo}</span>
-                    <span style={{ fontWeight:600,color:"#1e293b",fontSize:14 }}>{inst.name}</span>
-                    <span style={{ marginLeft:"auto",color:"#94a3b8",fontSize:13 }}>→</span>
-                  </div>
-                ))}
-                <div style={{ fontSize:11,color:"#94a3b8",marginTop:8,textAlign:"center" }}>
-                  Powered by Plaid · Bank-level 256-bit encryption · Read-only access
-                </div>
-              </div>
+            <div style={{ fontSize:13,color:"#64748b",marginBottom:20 }}>
+              Search for and connect any bank or credit union to automatically pull in deposits and expenses — you'll log in on your bank's own secure screen inside the next step, and we never see or store your bank password.
+            </div>
+
+            {phase==="error" && (
+              <div style={{ background:"#fee2e2",color:"#991b1b",borderRadius:8,padding:"10px 14px",fontSize:13,marginBottom:16 }}>{error}</div>
             )}
 
-            {step==="accounts"&&institution&&(
-              <div style={{ display:"flex",flexDirection:"column",gap:10 }}>
-                <div style={{ fontSize:13,color:"#64748b",marginBottom:6 }}>Select which accounts to connect. You can add or remove accounts later in Settings.</div>
-                {institution.accounts.map(acc=>(
-                  <label key={acc.id} style={{ display:"flex",alignItems:"center",gap:12,padding:"14px 16px",border:"1px solid "+(selected[acc.id]?"#0F6E56":"#e2e8f0"),borderRadius:10,cursor:"pointer",background:selected[acc.id]?"#f0fdf4":"#fff" }}>
-                    <input type="checkbox" checked={!!selected[acc.id]} onChange={()=>toggleAccount(acc.id)} style={{ width:18,height:18 }} />
-                    <div style={{ flex:1 }}>
-                      <div style={{ fontWeight:600,color:"#1e293b",fontSize:13 }}>{acc.name}</div>
-                      <div style={{ fontSize:11,color:"#94a3b8" }}>···{acc.mask} · {acc.type==="credit"?"Credit card":"Bank account"}</div>
-                    </div>
-                  </label>
-                ))}
-                <div style={{ display:"flex",gap:10,marginTop:8,justifyContent:"flex-end" }}>
-                  <Btn variant="secondary" onClick={()=>setStep("institution")}>Back</Btn>
-                  <Btn onClick={()=>setStep("label")} style={{ opacity:selectedAccounts.length?1:0.4 }} disabled={!selectedAccounts.length}>Next</Btn>
-                </div>
-              </div>
-            )}
+            <Btn size="lg" onClick={()=>open()} disabled={!ready||phase==="connecting"||phase==="syncing"} style={{ justifyContent:"center", width:"100%", opacity:(!ready||phase==="connecting"||phase==="syncing")?0.6:1 }}>
+              {phase==="loading" ? "Loading…" : phase==="connecting" ? "Connecting…" : phase==="syncing" ? "Importing transactions…" : "🏦 Search for your bank"}
+            </Btn>
 
-            {step==="label"&&(
-              <div style={{ display:"flex",flexDirection:"column",gap:12 }}>
-                <div style={{ fontSize:13,color:"#64748b",marginBottom:6 }}>Tell us how each account should be used — this determines how transactions are categorized.</div>
-                {selectedAccounts.map(acc=>(
-                  <div key={acc.id} style={{ background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:10,padding:"12px 14px" }}>
-                    <div style={{ fontWeight:600,color:"#1e293b",fontSize:13,marginBottom:8 }}>{acc.name} ···{acc.mask}</div>
-                    <div style={{ display:"flex",flexDirection:"column",gap:6 }}>
-                      {ACCOUNT_LABELS.map(lbl=>(
-                        <label key={lbl} style={{ display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13,color:"#475569" }}>
-                          <input type="radio" name={acc.id} value={lbl}
-                            checked={(labels[acc.id]||ACCOUNT_LABELS[acc.type==="credit"?1:0])===lbl}
-                            onChange={()=>setLabels(l=>({...l,[acc.id]:lbl}))} style={{ width:16,height:16 }} />
-                          {lbl}
-                          {lbl==="Personal — skip"&&<span style={{ fontSize:11,color:"#94a3b8" }}>(transactions ignored)</span>}
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-                <div style={{ display:"flex",gap:10,marginTop:8,justifyContent:"flex-end" }}>
-                  <Btn variant="secondary" onClick={()=>setStep("accounts")}>Back</Btn>
-                  <Btn onClick={connect} style={{ opacity:connecting?0.6:1 }}>
-                    {connecting?"Connecting…":"Connect accounts"}
-                  </Btn>
-                </div>
-              </div>
-            )}
+            <div style={{ fontSize:11,color:"#94a3b8",marginTop:14,textAlign:"center" }}>
+              Powered by Plaid · Bank-level 256-bit encryption · Read-only access
+            </div>
           </>
         )}
       </Card>
@@ -1609,10 +1559,11 @@ const RuleFormModal = ({ rule, practices, onSave, onClose }) => {
   );
 };
 
-const SettingsTab = ({ agreement, setAgreement, practices, setPractices, isMobile, connectedAccounts, setConnectedAccounts, activeSection, bankRules, addRule, updateRule, deleteRule }) => {
+const SettingsTab = ({ agreement, setAgreement, practices, setPractices, isMobile, connectedAccounts, setConnectedAccounts, setBanks, activeSection, bankRules, addRule, updateRule, deleteRule }) => {
   const [showModal, setShowModal]       = useState(false);
   const [editPractice, setEditPractice] = useState(null);
   const [showPlaid, setShowPlaid]       = useState(false);
+  const [syncing, setSyncing]           = useState(false);
   const [showRuleForm, setShowRuleForm] = useState(false);
   const [editRule, setEditRule]         = useState(null);
   const refProfile   = useRef();
@@ -1636,10 +1587,37 @@ const SettingsTab = ({ agreement, setAgreement, practices, setPractices, isMobil
 
   const removeAccount = (id) => setConnectedAccounts(a=>a.filter(x=>x.id!==id));
 
+  const mergeSyncedTransactions = (synced) => {
+    setBanks(bk => {
+      const removed = new Set(synced?.removedIds||[]);
+      const kept = bk.filter(b=>!removed.has(b.plaidTransactionId));
+      const byId = new Map(kept.map(b=>[b.id,b]));
+      (synced?.added||[]).forEach(a=>byId.set(a.id,a));
+      return Array.from(byId.values());
+    });
+  };
+
+  const syncNow = async () => {
+    setSyncing(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const resp = await fetch("/api/plaid/sync-transactions", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json", Authorization:`Bearer ${session?.access_token}` },
+      });
+      const json = await resp.json();
+      if(resp.ok) {
+        mergeSyncedTransactions(json);
+        setConnectedAccounts(a=>a.map(x=>({ ...x, lastSync:new Date().toISOString().slice(0,10) })));
+      }
+    } catch {}
+    setSyncing(false);
+  };
+
   return (
     <div style={{ display:"flex",flexDirection:"column",gap:20 }}>
       {(showModal||editPractice)&&<PracticeModal practice={editPractice} onSave={savePractice} onClose={()=>{ setShowModal(false); setEditPractice(null); }}/>}
-      {showPlaid&&<PlaidModal onConnect={accs=>setConnectedAccounts(a=>[...a,...accs.filter(na=>!a.find(x=>x.id===na.id))])} onClose={()=>setShowPlaid(false)} />}
+      {showPlaid&&<PlaidModal onConnect={accs=>setConnectedAccounts(a=>[...a,...accs.filter(na=>!a.find(x=>x.id===na.id))])} onTransactionsSynced={mergeSyncedTransactions} onClose={()=>setShowPlaid(false)} />}
       {(showRuleForm||editRule)&&<RuleFormModal
         rule={editRule}
         practices={practices}
@@ -1662,7 +1640,14 @@ const SettingsTab = ({ agreement, setAgreement, practices, setPractices, isMobil
             <div style={{ fontSize:15,fontWeight:700,color:"#1e293b" }}>Connected accounts</div>
             <div style={{ fontSize:12,color:"#94a3b8",marginTop:2 }}>Bank and credit card feeds for automatic transaction sync</div>
           </div>
-          <Btn onClick={()=>setShowPlaid(true)}>+ Connect account</Btn>
+          <div style={{ display:"flex",gap:8 }}>
+            {!!connectedAccounts.length && (
+              <Btn variant="secondary" onClick={syncNow} disabled={syncing} style={{ opacity:syncing?0.6:1 }}>
+                {syncing?"Syncing…":"🔄 Sync now"}
+              </Btn>
+            )}
+            <Btn onClick={()=>setShowPlaid(true)}>+ Connect account</Btn>
+          </div>
         </div>
         {!connectedAccounts.length ? (
           <div style={{ background:"#f8fafc",border:"1px dashed #e2e8f0",borderRadius:10,padding:"24px 20px",textAlign:"center" }}>
@@ -2263,7 +2248,7 @@ export default function App() {
         {tab==="home"         &&<HomeTab         production={production} expenses={expenses} banks={smartBanks} agreement={agreement} matches={matches} practices={practices} isMobile={isMobile} collectionsSummary={collectionsSummary}/>}
         {tab==="production"   &&<ProductionTab   production={production} setProduction={setProduction} practices={practices}/>}
         {tab==="transactions" &&<TransactionsTab expenses={expenses} setExpenses={setExpenses} banks={smartBanks} setBanks={setBanks} tagBank={tagBank} agreement={agreement} matches={matches} practices={practices} production={production} isMobile={isMobile} bankRules={bankRules} addRule={addRule}/>}
-        {tab==="settings"     &&<SettingsTab     agreement={agreement} setAgreement={setAgreement} practices={practices} setPractices={setPractices} isMobile={isMobile} connectedAccounts={connectedAccounts} setConnectedAccounts={setConnectedAccounts} activeSection={settingsSection} bankRules={bankRules} addRule={addRule} updateRule={updateRule} deleteRule={deleteRule}/>}
+        {tab==="settings"     &&<SettingsTab     agreement={agreement} setAgreement={setAgreement} practices={practices} setPractices={setPractices} isMobile={isMobile} connectedAccounts={connectedAccounts} setConnectedAccounts={setConnectedAccounts} setBanks={setBanks} activeSection={settingsSection} bankRules={bankRules} addRule={addRule} updateRule={updateRule} deleteRule={deleteRule}/>}
       </div>
 
       {/* Mobile bottom tab bar — 2 active tabs + future stubs */}

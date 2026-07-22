@@ -259,7 +259,7 @@ const ScanModal = ({ title, prompt, onClose, onResult }) => {
       const data = await res.json();
       if(!res.ok) throw new Error(data.error||"Scan failed");
       setLog(steps); setResult(JSON.parse((data.text||"").replace(/```json|```/g,"").trim()));
-    } catch { clearInterval(iv); setError("Could not read this image. Try a clearer photo."); }
+    } catch (e) { clearInterval(iv); setError(e.message || "Could not read this image. Try a clearer photo."); }
     setScanning(false);
   };
   return (
@@ -407,7 +407,7 @@ const LogModal = ({ practices, onSave, onClose }) => {
 
         <div style={{ display:"flex",gap:2,background:"#f1f5f9",borderRadius:10,padding:3,marginBottom:18 }}>
           <button onClick={()=>setMode("manual")} style={{ flex:1,padding:"8px 0",border:"none",borderRadius:8,fontSize:13,fontWeight:600,cursor:"pointer",background:mode==="manual"?"#fff":"transparent",color:mode==="manual"?"#0F6E56":"#64748b" }}>Type it in</button>
-          <button onClick={()=>setMode("scan")} style={{ flex:1,padding:"8px 0",border:"none",borderRadius:8,fontSize:13,fontWeight:600,cursor:"pointer",background:mode==="scan"?"#fff":"transparent",color:mode==="scan"?"#0F6E56":"#64748b" }}>📋 Scan day sheet</button>
+          <button disabled title="Coming soon" style={{ flex:1,padding:"8px 0",border:"none",borderRadius:8,fontSize:13,fontWeight:600,cursor:"not-allowed",background:"transparent",color:"#cbd5e1" }}>📋 Scan day sheet <span style={{ fontSize:10,fontWeight:700 }}>(soon)</span></button>
         </div>
 
         <div style={{ display:"flex",flexDirection:"column",gap:14 }}>
@@ -418,7 +418,7 @@ const LogModal = ({ practices, onSave, onClose }) => {
 
           {mode==="manual" ? (
             <>
-              <button onClick={()=>setShowScan(true)} style={{ display:"flex",alignItems:"center",gap:6,background:"none",border:"1px dashed #cbd5e1",borderRadius:8,padding:"8px 10px",fontSize:12,fontWeight:600,color:"#0F6E56",cursor:"pointer",width:"fit-content" }}>📷 Scan day sheet to autofill</button>
+              <div title="Coming soon" style={{ display:"flex",alignItems:"center",gap:6,background:"none",border:"1px dashed #e2e8f0",borderRadius:8,padding:"8px 10px",fontSize:12,fontWeight:600,color:"#cbd5e1",cursor:"not-allowed",width:"fit-content" }}>📷 Scan day sheet to autofill <span style={{ fontSize:10,fontWeight:700 }}>(coming soon)</span></div>
               <Input label="Total production today ($)" type="number" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0" autoFocus />
               {tracksLab&&(
                 <Input label="Lab fees today ($, if any)" type="number" value={labFees} onChange={e=>setLabFees(e.target.value)} placeholder="0" />
@@ -863,7 +863,7 @@ const ReceiptScanner = ({ bankId, onAttach, onClose }) => {
       const parsed = JSON.parse(text);
       setResult({ ...parsed, imageBase64:base64, mimeType:file.type||"image/jpeg" });
     } catch(e) {
-      setError("Couldn't read the receipt — try a clearer photo.");
+      setError(e.message || "Couldn't read the receipt — try a clearer photo.");
     }
     setScanning(false);
   };
@@ -955,7 +955,7 @@ const ManualExpenseModal = ({ agreement, onSave, onClose }) => {
           <Btn variant="ghost" size="sm" onClick={onClose}>Close</Btn>
         </div>
         <div style={{ display:"flex",flexDirection:"column",gap:14 }}>
-          <button onClick={()=>setShowScan(true)} style={{ display:"flex",alignItems:"center",gap:6,background:"none",border:"1px dashed #cbd5e1",borderRadius:8,padding:"8px 10px",fontSize:12,fontWeight:600,color:"#0F6E56",cursor:"pointer",width:"fit-content" }}>📷 Scan receipt to autofill</button>
+          <div title="Coming soon" style={{ display:"flex",alignItems:"center",gap:6,background:"none",border:"1px dashed #e2e8f0",borderRadius:8,padding:"8px 10px",fontSize:12,fontWeight:600,color:"#cbd5e1",cursor:"not-allowed",width:"fit-content" }}>📷 Scan receipt to autofill <span style={{ fontSize:10,fontWeight:700 }}>(coming soon)</span></div>
           {hasReceipt&&<div style={{ fontSize:12,color:"#166534" }}>✓ Receipt scanned — details filled in below, edit anything before saving</div>}
           <Input label="Date" type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))}/>
           <Input label="Vendor / Description" value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} placeholder="e.g. Cash purchase at dental supply store"/>
@@ -1201,7 +1201,7 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
                                 <Btn size="sm" variant="ghost" onClick={()=>setBanks(bk=>bk.map(x=>x.id===b.id?{...x,receipt:null}:x))}>Remove</Btn>
                               </div>
                             ) : (
-                              <Btn size="sm" variant="secondary" onClick={()=>setScanningFor(b.id)}>📷 Scan / upload</Btn>
+                              <Btn size="sm" variant="secondary" disabled title="Coming soon" style={{ opacity:0.5,cursor:"not-allowed" }}>📷 Scan / upload (soon)</Btn>
                             )}
                             {!b.receipt&&b.type==="business"&&b.taxDeductible&&(
                               <div style={{ fontSize:10,color:"#f59e0b",marginTop:4 }}>⚠ No receipt — CRA may ask</div>
@@ -1317,7 +1317,7 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
                                 </div>
                               ) : (
                                 <div>
-                                  <Btn size="sm" onClick={()=>setScanningFor(b.id)}>📷 Scan / upload receipt</Btn>
+                                  <Btn size="sm" disabled title="Coming soon" style={{ opacity:0.5,cursor:"not-allowed" }}>📷 Scan / upload receipt (soon)</Btn>
                                   <div style={{ fontSize:10,color:"#92400e",marginTop:4 }}>Required for CRA audit protection</div>
                                 </div>
                               )}

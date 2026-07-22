@@ -393,7 +393,12 @@ const LogModal = ({ practices, onSave, onClose }) => {
       {showScan&&<ScanModal title="Scan Day Sheet"
         prompt="Read a dental day sheet / production report. Extract: date (YYYY-MM-DD), total_production (number), total_collection (number if visible), total_lab_fees (number if visible)."
         onClose={()=>setShowScan(false)}
-        onResult={r=>{ onSave({ date:r.date||date, practiceId, production:+(r.total_production||0), labFees:+(r.total_lab_fees||0), source:"daysheet" }); onClose(); }} />}
+        onResult={r=>{
+          if(r.date) setDate(r.date);
+          if(r.total_production!=null) setAmount(String(r.total_production));
+          if(r.total_lab_fees!=null) setLabFees(String(r.total_lab_fees));
+          setMode("manual");
+        }} />}
       <Card className="dt-modal-card" style={{ width:420,padding:28,overflowY:"auto",maxHeight:"90vh" }}>
         <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20 }}>
           <div style={{ fontSize:17,fontWeight:700,color:"#1e293b" }}>Log today's production</div>
@@ -413,6 +418,7 @@ const LogModal = ({ practices, onSave, onClose }) => {
 
           {mode==="manual" ? (
             <>
+              <button onClick={()=>setShowScan(true)} style={{ display:"flex",alignItems:"center",gap:6,background:"none",border:"1px dashed #cbd5e1",borderRadius:8,padding:"8px 10px",fontSize:12,fontWeight:600,color:"#0F6E56",cursor:"pointer",width:"fit-content" }}>📷 Scan day sheet to autofill</button>
               <Input label="Total production today ($)" type="number" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0" autoFocus />
               {tracksLab&&(
                 <Input label="Lab fees today ($, if any)" type="number" value={labFees} onChange={e=>setLabFees(e.target.value)} placeholder="0" />
@@ -922,10 +928,24 @@ const ManualExpenseModal = ({ agreement, onSave, onClose }) => {
     date: new Date().toISOString().slice(0,10),
     description:"", category:"Supplies", notes:"",
   });
+  const [hasReceipt, setHasReceipt] = useState(false);
+  const [showScan, setShowScan] = useState(false);
   const cat = getCategory(form.category);
 
   return(
     <div className="dt-modal-overlay" style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1001 }}>
+      {showScan&&<ScanModal title="Scan Receipt"
+        prompt='Extract from this receipt: vendor name, date (YYYY-MM-DD), total amount (number). Respond as JSON with keys vendor, date, amount.'
+        onClose={()=>setShowScan(false)}
+        onResult={r=>{
+          setForm(f=>({
+            ...f,
+            description: r.vendor || f.description,
+            date: r.date || f.date,
+            amount: r.amount!=null ? +r.amount : f.amount,
+          }));
+          setHasReceipt(true);
+        }} />}
       <Card className="dt-modal-card" style={{ width:460,padding:28,overflowY:"auto",maxHeight:"90vh" }}>
         <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20 }}>
           <div>
@@ -935,6 +955,8 @@ const ManualExpenseModal = ({ agreement, onSave, onClose }) => {
           <Btn variant="ghost" size="sm" onClick={onClose}>Close</Btn>
         </div>
         <div style={{ display:"flex",flexDirection:"column",gap:14 }}>
+          <button onClick={()=>setShowScan(true)} style={{ display:"flex",alignItems:"center",gap:6,background:"none",border:"1px dashed #cbd5e1",borderRadius:8,padding:"8px 10px",fontSize:12,fontWeight:600,color:"#0F6E56",cursor:"pointer",width:"fit-content" }}>📷 Scan receipt to autofill</button>
+          {hasReceipt&&<div style={{ fontSize:12,color:"#166534" }}>✓ Receipt scanned — details filled in below, edit anything before saving</div>}
           <Input label="Date" type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))}/>
           <Input label="Vendor / Description" value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} placeholder="e.g. Cash purchase at dental supply store"/>
           <Input label="Amount ($)" type="number" value={form.amount||""} onChange={e=>setForm(f=>({...f,amount:+e.target.value}))} placeholder="0"/>
@@ -967,7 +989,7 @@ const ManualExpenseModal = ({ agreement, onSave, onClose }) => {
                 corpExpense: agreement.isCorp && cat.deductible,
                 notes: form.notes,
                 manual: true,
-                receipt: null,
+                receipt: hasReceipt,
                 reviewed: true,
                 userTagged: true,
               });

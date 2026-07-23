@@ -61,7 +61,78 @@ function buildMatches(expenses, banks) {
   return pairs;
 }
 
-// ── Bank Rules Engine ──────────────────────────────────────────────────────────
+// ── Merchant name cleaning (display only — raw description stays intact for matching) ──
+function cleanMerchantName(raw) {
+  if (!raw) return raw;
+  let s = raw;
+  s = s.replace(/\b\d{3}[-.\s]\d{3}[-.\s]\d{4}\b/g, "");       // phone numbers
+  s = s.replace(/#?\b\d{4,}\b/g, "");                          // long ref/store numbers
+  s = s.replace(/\s+[A-Z]{2}$/, "");                            // trailing province/state code
+  s = s.replace(/\s{2,}/g, " ").trim();
+  if (!s) return raw.trim();
+  s = s.split(" ").map(w => {
+    if (/^[A-Z]{2,3}$/.test(w)) return w;                       // keep short acronyms as-is
+    if (/^[A-Z0-9&']+$/.test(w) && w.length > 3) return w.charAt(0) + w.slice(1).toLowerCase();
+    return w;
+  }).join(" ");
+  return s;
+}
+
+// ── Transfer detection ──────────────────────────────────────────────────────
+// Heuristic only: we don't yet track which connected account each transaction
+// came from, so this pairs opposite-sign transactions of matching amount within
+// a few days of each other. Works well for the common case (moving money
+// between your own accounts, paying a card bill) but can occasionally misfire
+// on coincidental same-amount transactions — tracking a per-transaction
+// account id would make this exact instead of a heuristic.
+function flagTransfers(banks) {
+  const used = new Set();
+  const results = banks.map(b => ({ ...b }));
+  const byId = new Map(results.map(b => [b.id, b]));
+  for (const a of results) {
+    if (a.userTagged || a.autoTagged || used.has(a.id)) continue;
+    for (const b of results) {
+      if (a.id === b.id || used.has(b.id) || b.userTagged || b.autoTagged) continue;
+      const oppositeSign = (a.amount > 0) !== (b.amount > 0);
+      const amtMatch = Math.abs(Math.abs(a.amount) - Math.abs(b.amount)) < 1;
+      const dayDiff = Math.abs(new Date(a.date).getTime() - new Date(b.date).getTime()) / 86400000;
+      if (oppositeSign && amtMatch && dayDiff <= 3) {
+        byId.get(a.id).type = "transfer"; byId.get(a.id).autoTagged = true;
+        byId.get(b.id).type = "transfer"; byId.get(b.id).autoTagged = true;
+        used.add(a.id); used.add(b.id);
+        break;
+      }
+    }
+  }
+  return results;
+}
+
+// ── Duplicate detection ─────────────────────────────────────────────────────
+// Same amount, same sign, within a day of each other — flagged for the user
+// to review rather than silently hidden, since a false positive here would
+// mean a real transaction quietly disappears from someone's books.
+function detectDuplicates(banks) {
+  const dupIds = new Set();
+  for (let i = 0; i < banks.length; i++) {
+    for (let j = i + 1; j < banks.length; j++) {
+      const a = banks[i], b = banks[j];
+      const amtMatch = Math.abs(Math.abs(a.amount) - Math.abs(b.amount)) < 0.01 && Math.sign(a.amount) === Math.sign(b.amount);
+      const dayDiff = Math.abs(new Date(a.date).getTime() - new Date(b.date).getTime()) / 86400000;
+      if (amtMatch && dayDiff <= 1) { dupIds.add(a.id); dupIds.add(b.id); }
+    }
+  }
+  return dupIds;
+}
+
+// ── Deductible amount — aware of split transactions ─────────────────────────
+function deductibleAmount(b) {
+  if (b.splits && b.splits.length) {
+    return b.splits.reduce((s, sp) => s + (sp.taxDeductible ? Math.abs(sp.amount) * (sp.deductibleFraction ?? 1) : 0), 0);
+  }
+  return (b.type === "business" && b.taxDeductible) ? Math.abs(b.amount) * (b.deductibleFraction ?? 1) : 0;
+}
+
+
 const RULES_KEY = "dt_bank_rules_v2";
 
 function loadRules() {
@@ -668,7 +739,7 @@ const HomeTab = ({ production, expenses, banks, agreement, matches, practices, c
   const [showTax, setShowTax]     = useState(false);
 
   const totalProd   = production.reduce((s,r)=>s+r.production,0);
-  const totalExp    = banks.filter(b=>b.type==="business"&&b.taxDeductible).reduce((s,b)=>s+Math.abs(b.amount)*(b.deductibleFraction??1),0);
+  const totalExp    = banks.reduce((s,b)=>s+deductibleAmount(b),0);
   const deposits    = banks.filter(b=>b.type==="collection").reduce((s,b)=>s+b.amount,0);
   const expectedPay = practices.reduce((sum,pr)=>{
     const prDeps = banks.filter(b=>b.type==="collection"&&b.practiceId===pr.id).reduce((s,b)=>s+b.amount,0);
@@ -684,9 +755,17 @@ const HomeTab = ({ production, expenses, banks, agreement, matches, practices, c
     return { name: pr.name, deposits: prDeps, labFees: prLab, pay: Math.max(0, prDeps - prLab) * (pr.pct/100) };
   });
   const expenseByCategory = {};
-  banks.filter(b=>b.type==="business"&&b.taxDeductible).forEach(b=>{
-    const cat = b.category || "Other";
-    expenseByCategory[cat] = (expenseByCategory[cat]||0) + Math.abs(b.amount)*(b.deductibleFraction??1);
+  banks.forEach(b=>{
+    if (b.splits && b.splits.length) {
+      b.splits.forEach(sp=>{
+        if (!sp.taxDeductible) return;
+        const cat = sp.category || "Other";
+        expenseByCategory[cat] = (expenseByCategory[cat]||0) + Math.abs(sp.amount)*(sp.deductibleFraction??1);
+      });
+    } else if (b.type==="business" && b.taxDeductible) {
+      const cat = b.category || "Other";
+      expenseByCategory[cat] = (expenseByCategory[cat]||0) + Math.abs(b.amount)*(b.deductibleFraction??1);
+    }
   });
   const reportPeriod = new Date().toLocaleDateString(undefined,{ month:"long", year:"numeric" });
 
@@ -1042,12 +1121,14 @@ const ManualExpenseModal = ({ agreement, onSave, onClose }) => {
   );
 };
 
-const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agreement, matches, practices, production, bankRules, addRule }) => {
+const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agreement, matches, practices, production, bankRules, addRule, duplicateIds }) => {
   const [pendingRule, setPendingRule]     = useState(null);
   const [expandedId, setExpandedId]       = useState(null);
   const [scanningFor, setScanningFor]     = useState(null); // bankId to attach receipt to
   const [showManual, setShowManual]       = useState(false);
   const [sub, setSub]                     = useState("all");
+  const [splittingId, setSplittingId]     = useState(null); // bankId currently being split-edited
+  const [splitDraft, setSplitDraft]       = useState([]);   // [{id,category,amount}] while editing
 
   const SUBS = [
     { key:"all",         label:"All" },
@@ -1055,9 +1136,12 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
     { key:"deductibles", label:"Deductibles" },
     { key:"reconcile",   label:"Reconciliation" },
   ];
-  const bankStatus = (b) => { if(b.amount>0||b.type==="personal") return null; return b.receipt?"matched":"no-receipt"; };
-  const bizExp     = banks.filter(b=>b.type==="business"&&b.taxDeductible).reduce((s,b)=>s+Math.abs(b.amount)*(b.deductibleFraction??1),0);
+  const bankStatus = (b) => { if(b.amount>0||b.type==="personal"||b.type==="transfer") return null; return b.receipt?"matched":"no-receipt"; };
+  const bizExp     = banks.reduce((s,b)=>s+deductibleAmount(b),0);
+  const bizCount   = banks.filter(b=>deductibleAmount(b)>0).length;
   const deposits   = banks.filter(b=>b.type==="collection").reduce((s,b)=>s+b.amount,0);
+  const missingReceiptCount = banks.filter(b=>deductibleAmount(b)>0&&!b.receipt).length;
+  const duplicateCount = banks.filter(b=>duplicateIds?.has(b.id)).length;
 
   return (
     <div style={{ display:"flex",flexDirection:"column",gap:20 }}>
@@ -1078,16 +1162,26 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
       </div>
 
       <div style={{ display:"flex",gap:14,flexWrap:"wrap" }}>
-        <StatCard label="Deductible total"   value={fmt(bizExp)}   sub={banks.filter(b=>b.type==="business"&&b.taxDeductible).length+" transactions"} color="#1e293b"/>
+        <StatCard label="Deductible total"   value={fmt(bizExp)}   sub={bizCount+" transactions"} color="#1e293b"/>
         <StatCard label="Collections banked" value={fmt(deposits)} sub={practices.length+" practices"} color="#1e293b"/>
-        <StatCard label="Missing receipts"   value={String(banks.filter(b=>b.type==="business"&&b.taxDeductible&&!b.receipt).length)} sub="deductibles without documentation" color={banks.filter(b=>b.type==="business"&&b.taxDeductible&&!b.receipt).length>0?"#991b1b":"#1e293b"}/>
+        <StatCard label="Missing receipts"   value={String(missingReceiptCount)} sub="deductibles without documentation" color={missingReceiptCount>0?"#991b1b":"#1e293b"}/>
       </div>
 
-      {banks.filter(b=>b.type==="business"&&b.taxDeductible&&!b.receipt).length>0&&(
+      {duplicateCount>0&&(
+        <div style={{ background:"#fef2f2",border:"1px solid #fecaca",borderRadius:10,padding:"12px 18px",display:"flex",alignItems:"center",gap:10 }}>
+          <span>⚠️</span>
+          <div style={{ flex:1 }}>
+            <div style={{ fontSize:13,fontWeight:700,color:"#991b1b" }}>{duplicateCount} transactions look like possible duplicates</div>
+            <div style={{ fontSize:12,color:"#b91c1c" }}>Same amount, same day (±1) as another transaction. Marked with ⚠ below — review before counting both.</div>
+          </div>
+        </div>
+      )}
+
+      {banks.filter(b=>deductibleAmount(b)>0&&!b.receipt).length>0&&(
         <div onClick={()=>setSub("deductibles")} style={{ background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"12px 18px",display:"flex",alignItems:"center",gap:10,cursor:"pointer" }}>
           <span>📄</span>
           <div style={{ flex:1 }}>
-            <div style={{ fontSize:13,fontWeight:700,color:"#92400e" }}>{banks.filter(b=>b.type==="business"&&b.taxDeductible&&!b.receipt).length} deductible transactions missing a receipt</div>
+            <div style={{ fontSize:13,fontWeight:700,color:"#92400e" }}>{missingReceiptCount} deductible transactions missing a receipt</div>
             <div style={{ fontSize:12,color:"#b45309" }}>CRA requires receipts for all business expense claims. Tap to review.</div>
           </div>
           <span style={{ fontSize:12,color:"#92400e",fontWeight:600,whiteSpace:"nowrap" }}>Review →</span>
@@ -1141,15 +1235,17 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
                     {/* Description + meta */}
                     <div style={{ flex:1,minWidth:0 }}>
                       <div style={{ fontSize:13,fontWeight:500,color:"#1e293b",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap" }}>
-                        {b.description}
+                        {cleanMerchantName(b.description)}
                         {b.autoTagged&&!b.userTagged&&<span style={{ fontSize:10,color:"#3b82f6",fontWeight:600,background:"#eff6ff",padding:"1px 6px",borderRadius:99 }}>✨ Auto-tagged</span>}
+                        {duplicateIds?.has(b.id)&&<span style={{ fontSize:10,color:"#991b1b",fontWeight:600,background:"#fef2f2",padding:"1px 6px",borderRadius:99 }}>⚠ Possible duplicate</span>}
                       </div>
                       <div style={{ fontSize:11,color:"#94a3b8",marginTop:2,display:"flex",gap:10,flexWrap:"wrap" }}>
                         <span>{b.date}</span>
                         {pr&&<PracticeDot color={pr.color} name={pr.name}/>}
                         {b.type==="collection"&&<Badge label="💰 Collection" color="green"/>}
-                        {b.type==="business"&&<Badge label={b.category||"Business"} color="teal"/>}
+                        {b.type==="business"&&<Badge label={b.splits?.length ? `Split (${b.splits.length})` : (b.category||"Business")} color="teal"/>}
                         {b.type==="personal"&&<Badge label="Personal" color="gray"/>}
+                        {b.type==="transfer"&&<Badge label="🔁 Transfer" color="blue"/>}
                         {exp&&<span>↔ {exp.vendor}</span>}
                       </div>
                     </div>
@@ -1176,6 +1272,7 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
                               {v:"collection", l:"💰 Pay deposit"},
                               {v:"business",   l:"🏢 Business expense"},
                               {v:"personal",   l:"Personal"},
+                              {v:"transfer",   l:"🔁 Transfer between accounts"},
                             ].map(({v,l})=>(
                               <label key={v} style={{ display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13,color:b.type===v?"#0F6E56":"#475569",fontWeight:b.type===v?600:400 }}>
                                 <input type="radio" name={"type-"+b.id} value={v} checked={b.type===v}
@@ -1201,7 +1298,7 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
                         )}
 
                         {/* Category — only for expenses */}
-                        {b.type==="business"&&(
+                        {b.type==="business"&&!b.splits?.length&&(
                           <div style={{ minWidth:200 }}>
                             <div style={{ fontSize:11,fontWeight:600,color:"#64748b",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em" }}>Category</div>
                             <select value={b.category||""}
@@ -1217,8 +1314,75 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
                               const cat=getCategory(b.category);
                               return cat ? <div style={{ fontSize:11,color:cat.deductible?"#166534":"#991b1b",marginTop:5,lineHeight:1.4 }}>{cat.note}</div> : null;
                             })()}
+                            <button onClick={()=>{ setSplitDraft([{id:newId(),category:b.category||"",amount:Math.abs(b.amount)},{id:newId(),category:"",amount:0}]); setSplittingId(b.id); }}
+                              style={{ marginTop:6,background:"none",border:"none",color:"#0F6E56",fontSize:11,fontWeight:600,cursor:"pointer",padding:0 }}>
+                              Split into multiple categories
+                            </button>
                           </div>
                         )}
+
+                        {/* Split editor / summary */}
+                        {b.type==="business"&&splittingId!==b.id&&b.splits?.length>0&&(
+                          <div style={{ minWidth:220 }}>
+                            <div style={{ fontSize:11,fontWeight:600,color:"#64748b",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em" }}>Split ({b.splits.length})</div>
+                            <div style={{ display:"flex",flexDirection:"column",gap:3 }}>
+                              {b.splits.map(sp=>(
+                                <div key={sp.id} style={{ fontSize:12,color:"#334155",display:"flex",justifyContent:"space-between",gap:8 }}>
+                                  <span>{sp.category||"Uncategorized"}</span>
+                                  <span style={{ fontWeight:600 }}>{fmtFull(sp.amount)}</span>
+                                </div>
+                              ))}
+                            </div>
+                            <div style={{ display:"flex",gap:10,marginTop:6 }}>
+                              <button onClick={()=>{ setSplitDraft(b.splits.map(sp=>({...sp}))); setSplittingId(b.id); }} style={{ background:"none",border:"none",color:"#0F6E56",fontSize:11,fontWeight:600,cursor:"pointer",padding:0 }}>Edit split</button>
+                              <button onClick={()=>tagBank(b.id,{...b,splits:null,reviewed:true})} style={{ background:"none",border:"none",color:"#94a3b8",fontSize:11,cursor:"pointer",padding:0 }}>Remove split</button>
+                            </div>
+                          </div>
+                        )}
+
+                        {b.type==="business"&&splittingId===b.id&&(()=>{
+                          const total     = Math.abs(b.amount);
+                          const allocated = splitDraft.reduce((s,sp)=>s+(+sp.amount||0),0);
+                          const remaining = +(total-allocated).toFixed(2);
+                          return (
+                            <div style={{ minWidth:280,background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,padding:12 }}>
+                              <div style={{ fontSize:11,fontWeight:600,color:"#64748b",marginBottom:8,textTransform:"uppercase",letterSpacing:"0.05em" }}>Split this transaction</div>
+                              {splitDraft.map((sp,idx)=>(
+                                <div key={sp.id} style={{ display:"flex",gap:6,marginBottom:6,alignItems:"center" }}>
+                                  <select value={sp.category} onChange={e=>setSplitDraft(d=>d.map((x,i)=>i===idx?{...x,category:e.target.value}:x))}
+                                    style={{ flex:1,padding:"6px 8px",border:"1px solid #e2e8f0",borderRadius:6,fontSize:12,background:"#fff" }}>
+                                    <option value="">— category —</option>
+                                    {EXPENSE_CAT_LABELS.map(c=><option key={c} value={c}>{c}</option>)}
+                                  </select>
+                                  <input type="number" value={sp.amount} onChange={e=>setSplitDraft(d=>d.map((x,i)=>i===idx?{...x,amount:e.target.value}:x))}
+                                    style={{ width:80,padding:"6px 8px",border:"1px solid #e2e8f0",borderRadius:6,fontSize:12 }}/>
+                                  {splitDraft.length>2&&(
+                                    <button onClick={()=>setSplitDraft(d=>d.filter((_,i)=>i!==idx))} style={{ background:"none",border:"none",color:"#94a3b8",cursor:"pointer",fontSize:14 }}>×</button>
+                                  )}
+                                </div>
+                              ))}
+                              <button onClick={()=>setSplitDraft(d=>[...d,{id:newId(),category:"",amount:0}])}
+                                style={{ background:"none",border:"none",color:"#0F6E56",fontSize:11,fontWeight:600,cursor:"pointer",padding:0,marginBottom:8 }}>
+                                + Add another split
+                              </button>
+                              <div style={{ fontSize:11,color:Math.abs(remaining)<0.01?"#166534":"#b45309",marginBottom:8 }}>
+                                {Math.abs(remaining)<0.01 ? "✓ Fully allocated" : `${fmtFull(remaining)} remaining to allocate`}
+                              </div>
+                              <div style={{ display:"flex",gap:8 }}>
+                                <Btn size="sm" disabled={Math.abs(remaining)>=0.01||splitDraft.some(sp=>!sp.category)}
+                                  onClick={()=>{
+                                    const finalSplits = splitDraft.map(sp=>{
+                                      const cat=getCategory(sp.category);
+                                      return { id:sp.id, category:sp.category, amount:+sp.amount, taxDeductible:cat?.deductible??false, deductibleFraction:cat?.fraction??1 };
+                                    });
+                                    tagBank(b.id,{...b,splits:finalSplits,taxDeductible:finalSplits.some(s=>s.taxDeductible),reviewed:true});
+                                    setSplittingId(null);
+                                  }}>Save split</Btn>
+                                <Btn size="sm" variant="ghost" onClick={()=>setSplittingId(null)}>Cancel</Btn>
+                              </div>
+                            </div>
+                          );
+                        })()}
 
                         {/* Notes */}
                         <div style={{ flex:1,minWidth:160 }}>
@@ -1286,8 +1450,8 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
 
       {/* Deductibles — filtered view of all deductible bank transactions */}
       {(sub==="all"||sub==="deductibles")&&(()=>{
-        const deductible = banks.filter(b=>b.type==="business"&&b.taxDeductible);
-        const total      = deductible.reduce((s,b)=>s+Math.abs(b.amount)*(b.deductibleFraction??1),0);
+        const deductible = banks.filter(b=>deductibleAmount(b)>0);
+        const total      = deductible.reduce((s,b)=>s+deductibleAmount(b),0);
         const withReceipt  = deductible.filter(b=>b.receipt).length;
         const missingReceipt = deductible.filter(b=>!b.receipt);
 
@@ -1325,18 +1489,18 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
                           background:isOpen?"#f8fafc":i%2===0?"#fff":"#fafafa",cursor:"pointer" }}>
                         <div style={{ fontSize:16 }}>{b.receipt?"📷":"📄"}</div>
                         <div style={{ flex:1,minWidth:0 }}>
-                          <div style={{ fontSize:13,fontWeight:500,color:"#1e293b" }}>{b.description}</div>
+                          <div style={{ fontSize:13,fontWeight:500,color:"#1e293b" }}>{cleanMerchantName(b.description)}</div>
                           <div style={{ fontSize:11,color:"#94a3b8",marginTop:2,display:"flex",gap:8,flexWrap:"wrap" }}>
                             <span>{b.date}</span>
-                            <Badge label={b.category||"Business"} color="teal"/>
-                            {(b.deductibleFraction??1)<1&&<Badge label="50% rule" color="amber"/>}
+                            <Badge label={b.splits?.length ? `Split (${b.splits.length})` : (b.category||"Business")} color="teal"/>
+                            {(b.deductibleFraction??1)<1&&!b.splits?.length&&<Badge label="50% rule" color="amber"/>}
                             {b.manual&&<Badge label="Manual" color="gray"/>}
                             {b.notes&&<span style={{ fontStyle:"italic" }}>"{b.notes}"</span>}
                           </div>
                         </div>
                         <div style={{ textAlign:"right",flexShrink:0 }}>
-                          <div style={{ fontSize:14,fontWeight:700,color:"#1e293b" }}>{fmt(Math.abs(b.amount)*(b.deductibleFraction??1))}</div>
-                          {(b.deductibleFraction??1)<1&&<div style={{ fontSize:10,color:"#94a3b8" }}>of {fmt(Math.abs(b.amount))} total</div>}
+                          <div style={{ fontSize:14,fontWeight:700,color:"#1e293b" }}>{fmt(deductibleAmount(b))}</div>
+                          {deductibleAmount(b)<Math.abs(b.amount)&&<div style={{ fontSize:10,color:"#94a3b8" }}>of {fmt(Math.abs(b.amount))} total</div>}
                         </div>
                         <div style={{ fontSize:12,color:"#94a3b8",flexShrink:0 }}>▾</div>
                       </div>
@@ -2170,8 +2334,9 @@ export default function App() {
     );
   }
 
-  const smartBanks = applyRules(banks, bankRules);
-  const matches    = buildMatches(expenses, smartBanks);
+  const smartBanks  = flagTransfers(applyRules(banks, bankRules));
+  const matches     = buildMatches(expenses, smartBanks);
+  const duplicateIds = detectDuplicates(smartBanks);
 
   // Collections summary per practice
   const collectionsSummary = practices.map(pr => {
@@ -2286,7 +2451,7 @@ export default function App() {
         </div>
         {tab==="home"         &&<HomeTab         production={production} expenses={expenses} banks={smartBanks} agreement={agreement} matches={matches} practices={practices} isMobile={isMobile} collectionsSummary={collectionsSummary}/>}
         {tab==="production"   &&<ProductionTab   production={production} setProduction={setProduction} practices={practices}/>}
-        {tab==="transactions" &&<TransactionsTab expenses={expenses} setExpenses={setExpenses} banks={smartBanks} setBanks={setBanks} tagBank={tagBank} agreement={agreement} matches={matches} practices={practices} production={production} isMobile={isMobile} bankRules={bankRules} addRule={addRule}/>}
+        {tab==="transactions" &&<TransactionsTab expenses={expenses} setExpenses={setExpenses} banks={smartBanks} setBanks={setBanks} tagBank={tagBank} agreement={agreement} matches={matches} practices={practices} production={production} isMobile={isMobile} bankRules={bankRules} addRule={addRule} duplicateIds={duplicateIds}/>}
         {tab==="settings"     &&<SettingsTab     agreement={agreement} setAgreement={setAgreement} practices={practices} setPractices={setPractices} isMobile={isMobile} connectedAccounts={connectedAccounts} setConnectedAccounts={setConnectedAccounts} setBanks={setBanks} activeSection={settingsSection} bankRules={bankRules} addRule={addRule} updateRule={updateRule} deleteRule={deleteRule}/>}
       </div>
 

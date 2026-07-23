@@ -24,12 +24,14 @@ export default async function handler(req, res) {
   }
 
   try {
+    const appUrl = process.env.APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null);
     const response = await plaid.linkTokenCreate({
       user: { client_user_id: userId },
       client_name: 'DentaTrack',
       products: ['transactions'],
       country_codes: ['US', 'CA'],
       language: 'en',
+      ...(appUrl ? { webhook: `${appUrl}/api/plaid/webhook` } : {}),
     });
     return res.status(200).json({ link_token: response.data.link_token });
   } catch (err) {

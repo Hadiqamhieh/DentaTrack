@@ -1788,7 +1788,19 @@ const SettingsTab = ({ agreement, setAgreement, practices, setPractices, isMobil
     setEditPractice(null);
   };
 
-  const removeAccount = (id) => setConnectedAccounts(a=>a.filter(x=>x.id!==id));
+  const removeAccount = async (acc) => {
+    if (acc.plaidItemId) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        await fetch("/api/plaid/remove-item", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token}` },
+          body: JSON.stringify({ plaidItemId: acc.plaidItemId }),
+        });
+      } catch {}
+    }
+    setConnectedAccounts(a=>a.filter(x=>x.id!==acc.id));
+  };
 
   const mergeSyncedTransactions = (synced) => {
     setBanks(bk => {
@@ -1887,7 +1899,7 @@ const SettingsTab = ({ agreement, setAgreement, practices, setPractices, isMobil
                 <div style={{ display:"flex",alignItems:"center",gap:6,flexShrink:0 }}>
                   <Badge label={acc.label} color={acc.label==="Corp bank"?"teal":acc.label==="Corp credit card"?"purple":"gray"} />
                   <Badge label="✓ Live" color="green" />
-                  <Btn variant="danger" size="sm" onClick={()=>removeAccount(acc.id)}>Disconnect</Btn>
+                  <Btn variant="danger" size="sm" onClick={()=>removeAccount(acc)}>Disconnect</Btn>
                 </div>
               </div>
             ))}

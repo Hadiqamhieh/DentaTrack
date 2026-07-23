@@ -53,9 +53,10 @@ export default async function handler(req, res) {
 
   const allAdded = [];
   const allRemovedIds = [];
+  const itemErrors = [];
 
-  try {
-    for (const item of items) {
+  for (const item of items) {
+    try {
       let cursor = item.cursor || undefined;
       let hasMore = true;
       while (hasMore) {
@@ -84,19 +85,21 @@ export default async function handler(req, res) {
         hasMore = has_more;
       }
       await db.from('plaid_items').update({ cursor }).eq('id', item.id);
+    } catch (err) {
+      // Don't let one broken connection (e.g. a stale Sandbox item left over
+      // from testing) block syncing for every other connected bank.
+      const message = err?.response?.data?.error_message || err.message || 'Could not sync this connection.';
+      itemErrors.push({ institution: item.institution_name || 'a bank', message });
     }
-
-    const mapped = allAdded.map((b) => ({
-      id: b.id, date: b.date, description: b.description, amount: Number(b.amount), type: b.type,
-      reviewed: b.reviewed, practiceId: b.practice_id, userTagged: b.user_tagged, autoTagged: b.auto_tagged,
-      matchedRule: b.matched_rule, category: b.category, taxDeductible: b.tax_deductible,
-      deductibleFraction: b.deductible_fraction, corpExpense: b.corp_expense, receipt: b.receipt,
-      notes: b.notes, manual: b.manual,
-    }));
-
-    return res.status(200).json({ added: mapped, removedIds: allRemovedIds });
-  } catch (err) {
-    const message = err?.response?.data?.error_message || err.message || 'Could not sync transactions.';
-    return res.status(500).json({ error: message });
   }
+
+  const mapped = allAdded.map((b) => ({
+    id: b.id, date: b.date, description: b.description, amount: Number(b.amount), type: b.type,
+    reviewed: b.reviewed, practiceId: b.practice_id, userTagged: b.user_tagged, autoTagged: b.auto_tagged,
+    matchedRule: b.matched_rule, category: b.category, taxDeductible: b.tax_deductible,
+    deductibleFraction: b.deductible_fraction, corpExpense: b.corp_expense, receipt: b.receipt,
+    notes: b.notes, manual: b.manual,
+  }));
+
+  return res.status(200).json({ added: mapped, removedIds: allRemovedIds, itemErrors });
 }

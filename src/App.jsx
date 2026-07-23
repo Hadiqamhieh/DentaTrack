@@ -1800,8 +1800,10 @@ const SettingsTab = ({ agreement, setAgreement, practices, setPractices, isMobil
     });
   };
 
+  const [syncError, setSyncError]       = useState("");
   const syncNow = async () => {
     setSyncing(true);
+    setSyncError("");
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const resp = await fetch("/api/plaid/sync-transactions", {
@@ -1812,8 +1814,15 @@ const SettingsTab = ({ agreement, setAgreement, practices, setPractices, isMobil
       if(resp.ok) {
         mergeSyncedTransactions(json);
         setConnectedAccounts(a=>a.map(x=>({ ...x, lastSync:new Date().toISOString().slice(0,10) })));
+        if (json.itemErrors?.length) {
+          setSyncError(json.itemErrors.map(e=>`${e.institution}: ${e.message}`).join(" · "));
+        }
+      } else {
+        setSyncError(json.error || "Sync failed.");
       }
-    } catch {}
+    } catch {
+      setSyncError("Sync failed — check your connection and try again.");
+    }
     setSyncing(false);
   };
 
@@ -1852,6 +1861,11 @@ const SettingsTab = ({ agreement, setAgreement, practices, setPractices, isMobil
             <Btn onClick={()=>setShowPlaid(true)}>+ Connect account</Btn>
           </div>
         </div>
+        {syncError&&(
+          <div style={{ background:"#fef2f2",border:"1px solid #fecaca",color:"#991b1b",borderRadius:8,padding:"8px 12px",fontSize:12,marginBottom:14 }}>
+            ⚠ {syncError}
+          </div>
+        )}
         {!connectedAccounts.length ? (
           <div style={{ background:"#f8fafc",border:"1px dashed #e2e8f0",borderRadius:10,padding:"24px 20px",textAlign:"center" }}>
             <div style={{ fontSize:28,marginBottom:8 }}>🏦</div>

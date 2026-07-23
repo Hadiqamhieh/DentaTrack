@@ -45,7 +45,7 @@ export default function AuthGate({ children }) {
     setError('');
     setLoading(true);
     if (mode === 'signup') {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -53,8 +53,17 @@ export default function AuthGate({ children }) {
           emailRedirectTo: `${window.location.origin}/verified`,
         },
       });
-      if (error) setError(error.message);
-      else setMode('check-email');
+      if (error) {
+        setError(error.message);
+      } else if (data?.user && data.user.identities && data.user.identities.length === 0) {
+        // Supabase intentionally returns a fake success here instead of an
+        // error, to avoid leaking which emails are registered to an
+        // attacker probing signups. An empty identities array is the
+        // documented way to tell this case apart from a real new signup.
+        setError('An account with this email already exists. Try signing in instead.');
+      } else {
+        setMode('check-email');
+      }
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) setError(error.message);

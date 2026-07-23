@@ -124,7 +124,7 @@ export async function loadBanks(userId) {
     reviewed: b.reviewed, practiceId: b.practice_id, userTagged: b.user_tagged, autoTagged: b.auto_tagged,
     matchedRule: b.matched_rule, category: b.category, taxDeductible: b.tax_deductible,
     deductibleFraction: b.deductible_fraction, corpExpense: b.corp_expense, receipt: b.receipt,
-    notes: b.notes, manual: b.manual, plaidTransactionId: b.plaid_transaction_id, splits: b.splits,
+    notes: b.notes, manual: b.manual, plaidTransactionId: b.plaid_transaction_id, plaidItemId: b.plaid_item_id, splits: b.splits,
   }));
 }
 
@@ -135,7 +135,7 @@ export async function syncBanks(userId, banks) {
     matched_rule: isUuid(b.matchedRule) ? b.matchedRule : null, category: b.category,
     tax_deductible: b.taxDeductible, deductible_fraction: b.deductibleFraction,
     corp_expense: b.corpExpense, receipt: b.receipt, notes: b.notes, manual: b.manual || false,
-    plaid_transaction_id: b.plaidTransactionId || null, splits: b.splits || null,
+    plaid_transaction_id: b.plaidTransactionId || null, plaid_item_id: b.plaidItemId || null, splits: b.splits || null,
   }));
   await replaceAll('bank_transactions', userId, rows);
 }

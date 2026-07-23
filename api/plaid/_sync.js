@@ -2,7 +2,7 @@
 // (automatic sync triggered by Plaid). Pulls the latest transactions for a
 // single Plaid Item and stores them in bank_transactions.
 
-function toAppTransaction(t, userId) {
+function toAppTransaction(t, userId, plaidItemId) {
   // Plaid's amount sign is the opposite of ours: positive = money leaving
   // the account. Our app treats positive as money coming in.
   const amount = -t.amount;
@@ -17,6 +17,7 @@ function toAppTransaction(t, userId) {
     auto_tagged: false,
     manual: false,
     plaid_transaction_id: t.transaction_id,
+    plaid_item_id: plaidItemId,
   };
 }
 
@@ -30,7 +31,7 @@ export async function syncOneItem(plaid, db, item) {
     const resp = await plaid.transactionsSync({ access_token: item.access_token, cursor });
     const { added: a, modified, removed, next_cursor, has_more } = resp.data;
 
-    const upserts = [...a, ...modified].map((t) => toAppTransaction(t, item.user_id));
+    const upserts = [...a, ...modified].map((t) => toAppTransaction(t, item.user_id, item.id));
     if (upserts.length > 0) {
       const { data: upserted, error } = await db
         .from('bank_transactions')

@@ -1798,6 +1798,10 @@ const SettingsTab = ({ agreement, setAgreement, practices, setPractices, isMobil
           body: JSON.stringify({ plaidItemId: acc.plaidItemId }),
         });
       } catch {}
+      // The database cascades this delete automatically, but our local copy
+      // of the transactions doesn't know that — if we don't also drop them
+      // here, the next background save would just write them right back.
+      setBanks(bk => bk.filter(b => b.plaidItemId !== acc.plaidItemId));
     }
     setConnectedAccounts(a=>a.filter(x=>x.id!==acc.id));
   };

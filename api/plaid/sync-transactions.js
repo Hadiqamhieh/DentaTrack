@@ -57,7 +57,7 @@ export default async function handler(req, res) {
     reviewed: b.reviewed, practiceId: b.practice_id, userTagged: b.user_tagged, autoTagged: b.auto_tagged,
     matchedRule: b.matched_rule, category: b.category, taxDeductible: b.tax_deductible,
     deductibleFraction: b.deductible_fraction, corpExpense: b.corp_expense, receipt: b.receipt,
-    notes: b.notes, manual: b.manual,
+    notes: b.notes, manual: b.manual, plaidItemId: b.plaid_item_id,
   }));
 
   return res.status(200).json({ added: mapped, removedIds: allRemovedIds, itemErrors });

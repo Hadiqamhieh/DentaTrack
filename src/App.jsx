@@ -1191,16 +1191,37 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
       {(sub==="all"||sub==="feed")&&(
         <Card style={{ padding:0,overflow:"hidden" }}>
           {/* Feed header */}
-          <div style={{ padding:"14px 20px",borderBottom:"1px solid #f1f5f9",background:"#f8fafc",display:"flex",justifyContent:"space-between",alignItems:"center" }}>
-            <div>
-              <div style={{ fontSize:13,fontWeight:600,color:"#1e293b" }}>Bank feed</div>
-              <div style={{ fontSize:11,color:"#94a3b8",marginTop:2 }}>
-                {banks.filter(b=>!b.reviewed&&!b.userTagged).length > 0
-                  ? `${banks.filter(b=>!b.reviewed&&!b.userTagged).length} unreviewed — click any row to tag`
-                  : "All transactions reviewed"}
+          <div style={{ padding:"14px 20px",borderBottom:"1px solid #f1f5f9",background:"#f8fafc" }}>
+            <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10 }}>
+              <div>
+                <div style={{ fontSize:13,fontWeight:600,color:"#1e293b" }}>Bank feed</div>
+                <div style={{ fontSize:11,color:"#94a3b8",marginTop:2 }}>
+                  {banks.filter(b=>!b.reviewed&&!b.userTagged).length > 0
+                    ? `${banks.filter(b=>!b.reviewed&&!b.userTagged).length} unreviewed — click any row to tag`
+                    : "All transactions reviewed"}
+                </div>
+              </div>
+              <div style={{ display:"flex",gap:8,alignItems:"center" }}>
+                <Btn size="sm" variant="secondary" onClick={()=>setBanks(bk=>bk.map(x=>({...x,reviewed:true})))}>✓ Mark all reviewed</Btn>
+                <Btn size="sm" variant="ghost" onClick={()=>setBanks(bk=>bk.map(x=>({...x,reviewed:false})))}>↩ Mark all unreviewed</Btn>
+                <Badge label="Live sync" color="green"/>
               </div>
             </div>
-            <Badge label="Live sync" color="green"/>
+            {/* Color legend */}
+            <div style={{ display:"flex",gap:16,flexWrap:"wrap",marginTop:10,paddingTop:10,borderTop:"1px solid #e2e8f0" }}>
+              <div style={{ display:"flex",alignItems:"center",gap:6,fontSize:11,color:"#64748b" }}>
+                <div style={{ width:7,height:7,borderRadius:"50%",background:"#f59e0b" }}/> Needs review
+              </div>
+              <div style={{ display:"flex",alignItems:"center",gap:6,fontSize:11,color:"#64748b" }}>
+                <div style={{ width:7,height:7,borderRadius:"50%",background:"#3b82f6" }}/> Auto-tagged — worth double-checking
+              </div>
+              <div style={{ display:"flex",alignItems:"center",gap:6,fontSize:11,color:"#64748b" }}>
+                <div style={{ width:7,height:7,borderRadius:"50%",background:"#e2e8f0" }}/> Tagged by you
+              </div>
+              <div style={{ display:"flex",alignItems:"center",gap:6,fontSize:11,color:"#64748b" }}>
+                <div style={{ width:10,height:10,borderRadius:"50%",background:"#94a3b8",opacity:0.5 }}/> Faded = marked reviewed
+              </div>
+            </div>
           </div>
 
           {/* Unified transaction list — all transactions, click to expand */}
@@ -1227,6 +1248,9 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
                       borderBottom: isOpen ? "none" : "1px solid #f1f5f9",
                       borderLeft:"3px solid "+borderColor,
                       background: isOpen ? "#f8fafc" : i%2===0?"#fff":"#fafafa",
+                      opacity: b.reviewed ? 0.5 : 1,
+                      filter: b.reviewed ? "grayscale(1)" : "none",
+                      transition:"opacity 0.2s, filter 0.2s",
                       cursor:"pointer",userSelect:"none" }}>
                     {/* Status dot */}
                     <div style={{ width:7,height:7,borderRadius:"50%",flexShrink:0,

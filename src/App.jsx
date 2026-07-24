@@ -1607,6 +1607,7 @@ const PlaidModal = ({ onConnect, onTransactionsSynced, onClose }) => {
   const [linkToken, setLinkToken] = useState(null);
   const [phase, setPhase] = useState("loading"); // loading | ready | connecting | syncing | done | error
   const [error, setError] = useState("");
+  const [gotTransactions, setGotTransactions] = useState(false);
 
   const authedFetch = async (url, body) => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -1636,8 +1637,20 @@ const PlaidModal = ({ onConnect, onTransactionsSynced, onClose }) => {
       });
       onConnect(accounts);
       setPhase("syncing");
-      const synced = await authedFetch("/api/plaid/sync-transactions");
+
+      // A brand-new bank connection often isn't immediately ready with
+      // transaction history on Plaid's side — retry a few times with a
+      // short pause instead of leaving the feed looking empty and making
+      // the person hunt for a "Sync now" button themselves.
+      let synced = await authedFetch("/api/plaid/sync-transactions");
+      let attempts = 0;
+      while ((!synced.added || synced.added.length === 0) && attempts < 6) {
+        await new Promise(r => setTimeout(r, 3000));
+        synced = await authedFetch("/api/plaid/sync-transactions");
+        attempts++;
+      }
       onTransactionsSynced?.(synced);
+      setGotTransactions((synced.added || []).length > 0);
       setPhase("done");
     } catch (e) {
       setError(e.message);
@@ -1654,7 +1667,11 @@ const PlaidModal = ({ onConnect, onTransactionsSynced, onClose }) => {
           <div style={{ textAlign:"center",padding:"24px 0" }}>
             <div style={{ fontSize:36,marginBottom:12 }}>✅</div>
             <div style={{ fontSize:16,fontWeight:700,color:"#1e293b",marginBottom:6 }}>Bank connected</div>
-            <div style={{ fontSize:13,color:"#64748b",marginBottom:20 }}>Your transactions have been imported and will keep syncing.</div>
+            <div style={{ fontSize:13,color:"#64748b",marginBottom:20 }}>
+              {gotTransactions
+                ? "Your transactions have been imported and will keep syncing."
+                : "Your bank is still preparing your transaction history — this can occasionally take a few minutes for a brand-new connection. It'll appear on its own; no need to do anything else."}
+            </div>
             <Btn onClick={onClose}>Done</Btn>
           </div>
         ) : (
@@ -1673,7 +1690,7 @@ const PlaidModal = ({ onConnect, onTransactionsSynced, onClose }) => {
             )}
 
             <Btn size="lg" onClick={()=>open()} disabled={!ready||phase==="connecting"||phase==="syncing"} style={{ justifyContent:"center", width:"100%", opacity:(!ready||phase==="connecting"||phase==="syncing")?0.6:1 }}>
-              {phase==="loading" ? "Loading…" : phase==="connecting" ? "Connecting…" : phase==="syncing" ? "Importing transactions…" : "🏦 Search for your bank"}
+              {phase==="loading" ? "Loading…" : phase==="connecting" ? "Connecting…" : phase==="syncing" ? "Importing transactions… (can take a moment)" : "🏦 Search for your bank"}
             </Btn>
 
             <div style={{ fontSize:11,color:"#94a3b8",marginTop:14,textAlign:"center" }}>

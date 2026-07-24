@@ -2132,12 +2132,12 @@ const Tour = ({ isMobile, setTab, setSettingsSection, onFinish }) => {
   }, [step]);
 
   return (
-    <div style={{ position:"fixed", inset:0, pointerEvents:"none", zIndex:1100 }}>
+    <div style={{ position:"fixed", inset:0, background:"rgba(15,23,42,0.45)", zIndex:1100, transition:"background 0.2s" }}>
       <div style={{
         position:"fixed",
         ...(isMobile ? { left:12, right:12, bottom:12 } : { right:24, bottom:24, width:340 }),
-        background:"#fff", borderRadius:14, boxShadow:"0 10px 40px rgba(0,0,0,0.18)", border:"1px solid #e2e8f0",
-        padding:20, pointerEvents:"auto",
+        background:"#fff", borderRadius:14, boxShadow:"0 10px 40px rgba(0,0,0,0.28)", border:"1px solid #e2e8f0",
+        padding:20,
       }}>
         <div style={{ display:"flex", gap:5, marginBottom:14 }}>
           {TOUR_STEPS.map((_,i)=>(

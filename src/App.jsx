@@ -2057,7 +2057,8 @@ const PROVINCES_FULL = [
   { code:"OTHER", name:"Other / International", college:"",                                                     example:"License: 12345" },
 ];
 
-const GRADUATING_YEARS = Array.from({ length:40 }, (_,i)=>(new Date().getFullYear()-i).toString());
+const GRADUATING_YEARS = Array.from({ length:8 }, (_,i)=>(new Date().getFullYear()+7-i).toString())
+  .concat(Array.from({ length:40 }, (_,i)=>(new Date().getFullYear()-i).toString()).slice(1));
 
 const OnboardingShell = ({ step, total, children }) => (
   <div style={{ minHeight:"100vh",background:"#f8fafc",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui,-apple-system,sans-serif",padding:"24px 16px" }}>
@@ -2095,10 +2096,16 @@ const Onboarding = ({ onComplete, onTransactionsSynced }) => {
   }, []);
 
   const selectedProvince = PROVINCES_FULL.find(p=>p.code===profile.province);
-  const canStep2 = profile.name.trim()&&profile.email.trim()&&profile.licenseNumber.trim()&&profile.province;
+  const canStep2 = profile.name.trim()&&profile.email.trim()&&profile.province;
   const canStep3 = practice.name.trim();
 
-  const finish = () => onComplete({ profile, practice:{ ...practice, address:"", city:"", postalCode:"" }, connectedAccts });
+  const finish = () => {
+    const finalProfile = {
+      ...profile,
+      school: (profile.school==="Other / International" && profile.schoolOther?.trim()) ? profile.schoolOther.trim() : profile.school,
+    };
+    onComplete({ profile: finalProfile, practice:{ ...practice, address:"", city:"", postalCode:"" }, connectedAccts });
+  };
 
 
   // Step 1 — Welcome
@@ -2144,24 +2151,27 @@ const Onboarding = ({ onComplete, onTransactionsSynced }) => {
             <option value="OTHER">Other / International</option>
           </optgroup>
         </Sel>
-        <div>
-          <Input
-            label="College / Board license # *"
-            value={profile.licenseNumber}
-            onChange={e=>setProfile(p=>({...p,licenseNumber:e.target.value}))}
-            placeholder={selectedProvince ? `e.g. ${selectedProvince.example}` : "Your license or registration number"}
-          />
-          <div style={{ fontSize:11,color:"#94a3b8",marginTop:4 }}>
-            Find this on your registration certificate or your provincial college / state dental board member portal.
-          </div>
-        </div>
         <div style={{ borderTop:"1px solid #f1f5f9",paddingTop:16 }}>
           <div style={{ fontSize:12,color:"#94a3b8",fontWeight:500,textTransform:"uppercase",letterSpacing:"0.05em",marginBottom:14 }}>Optional</div>
           <div style={{ display:"flex",flexDirection:"column",gap:14 }}>
+            <div>
+              <Input
+                label="College / Board license #"
+                value={profile.licenseNumber}
+                onChange={e=>setProfile(p=>({...p,licenseNumber:e.target.value}))}
+                placeholder={selectedProvince ? `e.g. ${selectedProvince.example}` : "Your license or registration number"}
+              />
+              <div style={{ fontSize:11,color:"#94a3b8",marginTop:4 }}>
+                Find this on your registration certificate or your provincial college / state dental board member portal. You can add this later too.
+              </div>
+            </div>
             <Sel label="School / University" value={profile.school} onChange={e=>setProfile(p=>({...p,school:e.target.value}))}>
               <option value="">Select school…</option>
               {DENTAL_SCHOOLS.map(s=><option key={s} value={s}>{s}</option>)}
             </Sel>
+            {profile.school==="Other / International"&&(
+              <Input label="Your school's name" value={profile.schoolOther||""} onChange={e=>setProfile(p=>({...p,schoolOther:e.target.value}))} placeholder="Type your school's name" />
+            )}
             <Sel label="Graduating year" value={profile.graduatingYear} onChange={e=>setProfile(p=>({...p,graduatingYear:e.target.value}))}>
               <option value="">Select year…</option>
               {GRADUATING_YEARS.map(y=><option key={y} value={y}>{y}</option>)}

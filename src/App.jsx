@@ -2107,7 +2107,60 @@ const SettingsTab = ({ agreement, setAgreement, practices, setPractices, isMobil
   );
 };
 
-// ── Onboarding ────────────────────────────────────────────────────────────────
+// ── Guided product tour ──────────────────────────────────────────────────────
+// Shown once, automatically, right after a brand-new account finishes
+// onboarding. It actually switches the real tabs behind it as you go, rather
+// than being a static slideshow, so people see the real thing, not a mockup.
+const TOUR_STEPS = [
+  { tab:"home", title:"Welcome to DentaTrack 👋", body:"Quick 60-second look around before you dive in — skip anytime, no pressure." },
+  { tab:"home", title:"Home", body:"Your financial snapshot: expected pay, expenses, and estimated net take-home for the month. \"Email my P&L\" sends a PDF summary whenever you need one." },
+  { tab:"production", title:"Production", body:"Log each day's production here — this is what your pay percentage gets calculated from. Manual entry works today; day-sheet scanning is coming soon." },
+  { tab:"transactions", title:"Transactions", body:"Your bank feed lives here. Tap any transaction to tag it as a deposit, expense, or transfer — split it across categories, attach a receipt, or create a rule so future ones tag themselves." },
+  { tab:"settings", section:"practices", title:"Settings — Practices", body:"Add every office you work at, each with its own pay percentage and lab-fee rules — this is what your expected pay is built on." },
+  { tab:"settings", section:"accounts", title:"Settings — Connected accounts", body:"Connect your real bank here so deposits and expenses import automatically instead of typing everything by hand." },
+  { tab:"settings", section:"corp", title:"You're all set", body:"That's the tour! Everything here can be revisited anytime — jump back into Settings whenever you need to adjust something." },
+];
+
+const Tour = ({ isMobile, setTab, setSettingsSection, onFinish }) => {
+  const [step, setStep] = useState(0);
+  const s = TOUR_STEPS[step];
+  const last = step === TOUR_STEPS.length - 1;
+
+  useEffect(() => {
+    setTab(s.tab);
+    setSettingsSection(s.section || null);
+  }, [step]);
+
+  return (
+    <div style={{ position:"fixed", inset:0, pointerEvents:"none", zIndex:1100 }}>
+      <div style={{
+        position:"fixed",
+        ...(isMobile ? { left:12, right:12, bottom:12 } : { right:24, bottom:24, width:340 }),
+        background:"#fff", borderRadius:14, boxShadow:"0 10px 40px rgba(0,0,0,0.18)", border:"1px solid #e2e8f0",
+        padding:20, pointerEvents:"auto",
+      }}>
+        <div style={{ display:"flex", gap:5, marginBottom:14 }}>
+          {TOUR_STEPS.map((_,i)=>(
+            <div key={i} style={{ flex:1, height:3, borderRadius:99, background:i<=step?"#0F6E56":"#e2e8f0" }} />
+          ))}
+        </div>
+        <div style={{ fontSize:15, fontWeight:700, color:"#1e293b", marginBottom:6 }}>{s.title}</div>
+        <div style={{ fontSize:13, color:"#64748b", lineHeight:1.5, marginBottom:18 }}>{s.body}</div>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <button onClick={onFinish} style={{ background:"none", border:"none", color:"#94a3b8", fontSize:12, cursor:"pointer", padding:0 }}>
+            Skip tour
+          </button>
+          <div style={{ display:"flex", gap:8 }}>
+            {step>0 && <Btn size="sm" variant="secondary" onClick={()=>setStep(st=>st-1)}>Back</Btn>}
+            <Btn size="sm" onClick={()=> last ? onFinish() : setStep(st=>st+1)}>{last ? "Done" : "Next →"}</Btn>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
 const DENTAL_SCHOOLS = [
   "University of Toronto — Faculty of Dentistry",
   "McGill University — Faculty of Dentistry",
@@ -2417,7 +2470,7 @@ export default function App() {
   const [banks, setBanks]           = useState([]);
   const [bankRules, setBankRules]   = useState([]);
   const [practices, setPractices]   = useState([]);
-  const [agreement, setAgreement]   = useState({ isCorp:false,salary:0,dividends:0,name:"",corpName:"" });
+  const [agreement, setAgreement]   = useState({ isCorp:false,salary:0,dividends:0,name:"",corpName:"",tourCompleted:true });
   const [connectedAccounts, setConnectedAccounts] = useState([]);
   const [menuOpen, setMenuOpen]     = useState(false);
   const [settingsSection, setSettingsSection] = useState(null);
@@ -2649,6 +2702,15 @@ export default function App() {
             </button>
           ))}
         </nav>
+      )}
+
+      {!agreement.tourCompleted && (
+        <Tour
+          isMobile={isMobile}
+          setTab={setTab}
+          setSettingsSection={setSettingsSection}
+          onFinish={()=>setAgreement(a=>({...a, tourCompleted:true}))}
+        />
       )}
     </div>
   );

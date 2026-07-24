@@ -48,6 +48,7 @@ export async function loadProfile(userId) {
     licenseNumber: data.license_number || '',
     school: data.school || '',
     graduatingYear: data.graduating_year || '',
+    tourCompleted: data.tour_completed ?? true,
   };
 }
 
@@ -63,6 +64,7 @@ export async function saveProfile(userId, agreement) {
     license_number: agreement.licenseNumber || null,
     school: agreement.school || null,
     graduating_year: agreement.graduatingYear || null,
+    tour_completed: agreement.tourCompleted ?? true,
   });
   if (error) console.error('profile save failed:', error.message);
 }

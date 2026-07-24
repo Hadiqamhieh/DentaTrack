@@ -44,6 +44,10 @@ export async function loadProfile(userId) {
     isCorp: data.is_corp || false,
     salary: data.salary || 0,
     dividends: data.dividends || 0,
+    province: data.province || '',
+    licenseNumber: data.license_number || '',
+    school: data.school || '',
+    graduatingYear: data.graduating_year || '',
   };
 }
 
@@ -55,6 +59,10 @@ export async function saveProfile(userId, agreement) {
     is_corp: agreement.isCorp,
     salary: agreement.salary,
     dividends: agreement.dividends,
+    province: agreement.province || null,
+    license_number: agreement.licenseNumber || null,
+    school: agreement.school || null,
+    graduating_year: agreement.graduatingYear || null,
   });
   if (error) console.error('profile save failed:', error.message);
 }

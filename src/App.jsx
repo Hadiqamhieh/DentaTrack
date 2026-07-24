@@ -2078,7 +2078,7 @@ const OnboardingShell = ({ step, total, children }) => (
   </div>
 );
 
-const Onboarding = ({ onComplete }) => {
+const Onboarding = ({ onComplete, onTransactionsSynced }) => {
   const [step, setStep] = useState(1);
   const TOTAL = 5;
 
@@ -2088,11 +2088,17 @@ const Onboarding = ({ onComplete }) => {
   const [showPlaid, setShowPlaid] = useState(false);
   const [connectedAccts, setConnectedAccts] = useState([]);
 
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (data?.user?.email) setProfile(p => ({ ...p, email: data.user.email }));
+    });
+  }, []);
+
   const selectedProvince = PROVINCES_FULL.find(p=>p.code===profile.province);
   const canStep2 = profile.name.trim()&&profile.email.trim()&&profile.licenseNumber.trim()&&profile.province;
   const canStep3 = practice.name.trim();
 
-  const finish = () => onComplete({ profile, practice:{ ...practice, id:"p1", address:"", city:"", postalCode:"" }, connectedAccts });
+  const finish = () => onComplete({ profile, practice:{ ...practice, address:"", city:"", postalCode:"" }, connectedAccts });
 
 
   // Step 1 — Welcome
@@ -2116,9 +2122,6 @@ const Onboarding = ({ onComplete }) => {
         </div>
       ))}
       <Btn size="lg" onClick={()=>setStep(2)} style={{ width:"100%",justifyContent:"center",marginTop:36 }}>Get started →</Btn>
-      <div style={{ textAlign:"center",marginTop:14,fontSize:12,color:"#94a3b8" }}>
-        Already have an account? <span style={{ color:"#0F6E56",cursor:"pointer",fontWeight:600 }}>Sign in</span>
-      </div>
     </OnboardingShell>
   );
 
@@ -2226,6 +2229,7 @@ const Onboarding = ({ onComplete }) => {
       {showPlaid&&(
         <PlaidModal
           onConnect={accs=>{ setConnectedAccts(accs); setBankConnected(true); setShowPlaid(false); setStep(5); }}
+          onTransactionsSynced={onTransactionsSynced}
           onClose={()=>setShowPlaid(false)}
         />
       )}
@@ -2354,6 +2358,30 @@ export default function App() {
   const updateRule = (id,up) => setBankRules(r => r.map(x=>x.id===id?{...x,...up}:x));
   const deleteRule = (id)    => setBankRules(r => r.filter(x=>x.id!==id));
 
+  const mergeSyncedTransactions = (synced) => {
+    setBanks(bk => {
+      const removed = new Set(synced?.removedIds||[]);
+      const kept = bk.filter(b=>!removed.has(b.plaidTransactionId));
+      const byId = new Map(kept.map(b=>[b.id,b]));
+      (synced?.added||[]).forEach(a=>byId.set(a.id,a));
+      return Array.from(byId.values());
+    });
+  };
+
+  const handleOnboardingComplete = ({ profile, practice, connectedAccts }) => {
+    setAgreement(a => ({
+      ...a,
+      name: profile.name,
+      isCorp: profile.isCorp,
+      province: profile.province,
+      licenseNumber: profile.licenseNumber,
+      school: profile.school,
+      graduatingYear: profile.graduatingYear,
+    }));
+    setPractices(p => [...p, { ...practice, id: newId() }]);
+    if (connectedAccts?.length) setConnectedAccounts(a => [...a, ...connectedAccts]);
+  };
+
   const isMobile = useIsMobile();
 
   if (!dataLoaded) {
@@ -2362,6 +2390,10 @@ export default function App() {
         Loading your data…
       </div>
     );
+  }
+
+  if (practices.length === 0) {
+    return <Onboarding onComplete={handleOnboardingComplete} onTransactionsSynced={mergeSyncedTransactions} />;
   }
 
   const smartBanks  = flagTransfers(applyRules(banks, bankRules));

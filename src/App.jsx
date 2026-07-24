@@ -1121,7 +1121,7 @@ const ManualExpenseModal = ({ agreement, onSave, onClose }) => {
   );
 };
 
-const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agreement, matches, practices, production, bankRules, addRule, duplicateIds }) => {
+const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agreement, matches, practices, production, bankRules, addRule, duplicateIds, connectedAccounts }) => {
   const [pendingRule, setPendingRule]     = useState(null);
   const [expandedId, setExpandedId]       = useState(null);
   const [scanningFor, setScanningFor]     = useState(null); // bankId to attach receipt to
@@ -1129,6 +1129,8 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
   const [sub, setSub]                     = useState("all");
   const [splittingId, setSplittingId]     = useState(null); // bankId currently being split-edited
   const [splitDraft, setSplitDraft]       = useState([]);   // [{id,category,amount}] while editing
+  const [monthFilter, setMonthFilter]     = useState("all");
+  const [accountFilter, setAccountFilter] = useState("all");
 
   const SUBS = [
     { key:"all",         label:"All" },
@@ -1136,12 +1138,26 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
     { key:"deductibles", label:"Deductibles" },
     { key:"reconcile",   label:"Reconciliation" },
   ];
+
+  // Months present in the data, newest first — independent of the current
+  // filter selection, so switching months never hides other months from the list.
+  const availableMonths = Array.from(new Set(banks.map(b=>b.date.slice(0,7)))).sort().reverse();
+  const monthLabel = (ym) => {
+    const [y,m] = ym.split("-");
+    return new Date(+y, +m-1, 1).toLocaleDateString(undefined,{ month:"long", year:"numeric" });
+  };
+
+  const filteredBanks = banks.filter(b=>
+    (monthFilter==="all" || b.date.slice(0,7)===monthFilter) &&
+    (accountFilter==="all" || (accountFilter==="manual" ? !b.plaidAccountId : b.plaidAccountId===accountFilter))
+  );
+
   const bankStatus = (b) => { if(b.amount>0||b.type==="personal"||b.type==="transfer") return null; return b.receipt?"matched":"no-receipt"; };
-  const bizExp     = banks.reduce((s,b)=>s+deductibleAmount(b),0);
-  const bizCount   = banks.filter(b=>deductibleAmount(b)>0).length;
-  const deposits   = banks.filter(b=>b.type==="collection").reduce((s,b)=>s+b.amount,0);
-  const missingReceiptCount = banks.filter(b=>deductibleAmount(b)>0&&!b.receipt).length;
-  const duplicateCount = banks.filter(b=>duplicateIds?.has(b.id)).length;
+  const bizExp     = filteredBanks.reduce((s,b)=>s+deductibleAmount(b),0);
+  const bizCount   = filteredBanks.filter(b=>deductibleAmount(b)>0).length;
+  const deposits   = filteredBanks.filter(b=>b.type==="collection").reduce((s,b)=>s+b.amount,0);
+  const missingReceiptCount = filteredBanks.filter(b=>deductibleAmount(b)>0&&!b.receipt).length;
+  const duplicateCount = filteredBanks.filter(b=>duplicateIds?.has(b.id)).length;
 
   return (
     <div style={{ display:"flex",flexDirection:"column",gap:20 }}>
@@ -1161,6 +1177,28 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
         <Btn variant="ghost" size="sm" onClick={()=>setShowManual(true)}>+ Manual expense</Btn>
       </div>
 
+      <div style={{ display:"flex",gap:10,flexWrap:"wrap" }}>
+        <select value={monthFilter} onChange={e=>setMonthFilter(e.target.value)}
+          style={{ padding:"8px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,color:"#1e293b",background:"#fff" }}>
+          <option value="all">All months</option>
+          {availableMonths.map(ym=><option key={ym} value={ym}>{monthLabel(ym)}</option>)}
+        </select>
+        <select value={accountFilter} onChange={e=>setAccountFilter(e.target.value)}
+          style={{ padding:"8px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,color:"#1e293b",background:"#fff" }}>
+          <option value="all">All accounts</option>
+          {(connectedAccounts||[]).map(acc=>(
+            <option key={acc.plaidAccountId||acc.id} value={acc.plaidAccountId}>{acc.name} ···{acc.mask}</option>
+          ))}
+          <option value="manual">Manual entries</option>
+        </select>
+        {(monthFilter!=="all"||accountFilter!=="all")&&(
+          <button onClick={()=>{ setMonthFilter("all"); setAccountFilter("all"); }}
+            style={{ background:"none",border:"none",color:"#0F6E56",fontSize:13,fontWeight:600,cursor:"pointer" }}>
+            Clear filters
+          </button>
+        )}
+      </div>
+
       <div style={{ display:"flex",gap:14,flexWrap:"wrap" }}>
         <StatCard label="Deductible total"   value={fmt(bizExp)}   sub={bizCount+" transactions"} color="#1e293b"/>
         <StatCard label="Collections banked" value={fmt(deposits)} sub={practices.length+" practices"} color="#1e293b"/>
@@ -1177,7 +1215,7 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
         </div>
       )}
 
-      {banks.filter(b=>deductibleAmount(b)>0&&!b.receipt).length>0&&(
+      {missingReceiptCount>0&&(
         <div onClick={()=>setSub("deductibles")} style={{ background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"12px 18px",display:"flex",alignItems:"center",gap:10,cursor:"pointer" }}>
           <span>📄</span>
           <div style={{ flex:1 }}>
@@ -1196,14 +1234,14 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
               <div>
                 <div style={{ fontSize:13,fontWeight:600,color:"#1e293b" }}>Bank feed</div>
                 <div style={{ fontSize:11,color:"#94a3b8",marginTop:2 }}>
-                  {banks.filter(b=>!b.reviewed&&!b.userTagged).length > 0
-                    ? `${banks.filter(b=>!b.reviewed&&!b.userTagged).length} unreviewed — click any row to tag`
+                  {filteredBanks.filter(b=>!b.reviewed&&!b.userTagged).length > 0
+                    ? `${filteredBanks.filter(b=>!b.reviewed&&!b.userTagged).length} unreviewed — click any row to tag`
                     : "All transactions reviewed"}
                 </div>
               </div>
               <div style={{ display:"flex",gap:8,alignItems:"center" }}>
-                <Btn size="sm" variant="secondary" onClick={()=>setBanks(bk=>bk.map(x=>({...x,reviewed:true})))}>✓ Mark all reviewed</Btn>
-                <Btn size="sm" variant="ghost" onClick={()=>setBanks(bk=>bk.map(x=>({...x,reviewed:false})))}>↩ Mark all unreviewed</Btn>
+                <Btn size="sm" variant="secondary" onClick={()=>{ const ids=new Set(filteredBanks.map(x=>x.id)); setBanks(bk=>bk.map(x=>ids.has(x.id)?{...x,reviewed:true}:x)); }}>✓ Mark all reviewed</Btn>
+                <Btn size="sm" variant="ghost" onClick={()=>{ const ids=new Set(filteredBanks.map(x=>x.id)); setBanks(bk=>bk.map(x=>ids.has(x.id)?{...x,reviewed:false}:x)); }}>↩ Mark all unreviewed</Btn>
                 <Badge label="Live sync" color="green"/>
               </div>
             </div>
@@ -1226,7 +1264,7 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
 
           {/* Unified transaction list — all transactions, click to expand */}
           <div>
-            {[...banks].sort((a,b)=>b.date.localeCompare(a.date)).map((b,i)=>{
+            {[...filteredBanks].sort((a,b)=>b.date.localeCompare(a.date)).map((b,i)=>{
               const isOpen   = expandedId === b.id;
               const isTagged = b.userTagged || b.autoTagged;
               const pr       = practices.find(p=>p.id===b.practiceId);
@@ -1474,7 +1512,7 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
 
       {/* Deductibles — filtered view of all deductible bank transactions */}
       {(sub==="all"||sub==="deductibles")&&(()=>{
-        const deductible = banks.filter(b=>deductibleAmount(b)>0);
+        const deductible = filteredBanks.filter(b=>deductibleAmount(b)>0);
         const total      = deductible.reduce((s,b)=>s+deductibleAmount(b),0);
         const withReceipt  = deductible.filter(b=>b.receipt).length;
         const missingReceipt = deductible.filter(b=>!b.receipt);
@@ -2681,7 +2719,7 @@ export default function App() {
         </div>
         {tab==="home"         &&<HomeTab         production={production} expenses={expenses} banks={smartBanks} agreement={agreement} matches={matches} practices={practices} isMobile={isMobile} collectionsSummary={collectionsSummary}/>}
         {tab==="production"   &&<ProductionTab   production={production} setProduction={setProduction} practices={practices}/>}
-        {tab==="transactions" &&<TransactionsTab expenses={expenses} setExpenses={setExpenses} banks={smartBanks} setBanks={setBanks} tagBank={tagBank} agreement={agreement} matches={matches} practices={practices} production={production} isMobile={isMobile} bankRules={bankRules} addRule={addRule} duplicateIds={duplicateIds}/>}
+        {tab==="transactions" &&<TransactionsTab expenses={expenses} setExpenses={setExpenses} banks={smartBanks} setBanks={setBanks} tagBank={tagBank} agreement={agreement} matches={matches} practices={practices} production={production} isMobile={isMobile} bankRules={bankRules} addRule={addRule} duplicateIds={duplicateIds} connectedAccounts={connectedAccounts}/>}
         {tab==="settings"     &&<SettingsTab     agreement={agreement} setAgreement={setAgreement} practices={practices} setPractices={setPractices} isMobile={isMobile} connectedAccounts={connectedAccounts} setConnectedAccounts={setConnectedAccounts} setBanks={setBanks} activeSection={settingsSection} bankRules={bankRules} addRule={addRule} updateRule={updateRule} deleteRule={deleteRule}/>}
       </div>
 

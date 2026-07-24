@@ -18,6 +18,7 @@ function toAppTransaction(t, userId, plaidItemId) {
     manual: false,
     plaid_transaction_id: t.transaction_id,
     plaid_item_id: plaidItemId,
+    plaid_account_id: t.account_id,
   };
 }
 

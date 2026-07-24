@@ -33,12 +33,35 @@ export default function AuthGate({ children }) {
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [deactivated, setDeactivated] = useState(false);
+  const [checkingStatus, setCheckingStatus] = useState(true);
+  const [reactivating, setReactivating] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
     const { data: listener } = supabase.auth.onAuthStateChange((_event, sess) => setSession(sess));
     return () => listener.subscription.unsubscribe();
   }, []);
+
+  // Whenever a session appears, check whether this account was deactivated.
+  useEffect(() => {
+    if (!session) { setCheckingStatus(false); return; }
+    let cancelled = false;
+    setCheckingStatus(true);
+    supabase.from('profiles').select('deactivated').eq('id', session.user.id).maybeSingle().then(({ data }) => {
+      if (cancelled) return;
+      setDeactivated(!!data?.deactivated);
+      setCheckingStatus(false);
+    });
+    return () => { cancelled = true; };
+  }, [session]);
+
+  const reactivate = async () => {
+    setReactivating(true);
+    await supabase.from('profiles').update({ deactivated: false }).eq('id', session.user.id);
+    setDeactivated(false);
+    setReactivating(false);
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -77,6 +100,41 @@ export default function AuthGate({ children }) {
       <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui,-apple-system,sans-serif', color: '#94a3b8' }}>
         Loading…
       </div>
+    );
+  }
+
+  // Logged in — check deactivation status before showing anything
+  if (session && checkingStatus) {
+    return (
+      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui,-apple-system,sans-serif', color: '#94a3b8' }}>
+        Loading…
+      </div>
+    );
+  }
+
+  if (session && deactivated) {
+    return (
+      <CardShell>
+        <Logo />
+        <div style={{ fontSize: 40, marginBottom: 12 }}>👋</div>
+        <div style={{ fontSize: 20, fontWeight: 800, color: '#1e293b', marginBottom: 8 }}>Welcome back</div>
+        <div style={{ fontSize: 14, color: '#64748b', marginBottom: 20, lineHeight: 1.5 }}>
+          Your account is currently deactivated. Your practices, production, and expense history are all still safely here — nothing was lost. Any bank connections were disconnected when you deactivated, so you'll just need to reconnect them if you'd like.
+        </div>
+        <button
+          onClick={reactivate}
+          disabled={reactivating}
+          style={{ background: '#0F6E56', color: '#fff', border: 'none', borderRadius: 10, padding: '11px 20px', fontWeight: 700, fontSize: 14, cursor: 'pointer', width: '100%', opacity: reactivating ? 0.7 : 1, marginBottom: 12 }}
+        >
+          {reactivating ? 'Reactivating…' : 'Reactivate my account'}
+        </button>
+        <button
+          onClick={() => supabase.auth.signOut()}
+          style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: 13, cursor: 'pointer', width: '100%' }}
+        >
+          Sign out
+        </button>
+      </CardShell>
     );
   }
 

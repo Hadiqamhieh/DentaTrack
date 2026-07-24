@@ -1769,6 +1769,9 @@ const SettingsTab = ({ agreement, setAgreement, practices, setPractices, isMobil
   const [syncing, setSyncing]           = useState(false);
   const [showRuleForm, setShowRuleForm] = useState(false);
   const [editRule, setEditRule]         = useState(null);
+  const [showDeactivate, setShowDeactivate] = useState(false);
+  const [deactivating, setDeactivating]     = useState(false);
+  const [deactivateError, setDeactivateError] = useState("");
   const refProfile   = useRef();
   const refAccounts  = useRef();
   const refPractices = useRef();
@@ -1786,6 +1789,24 @@ const SettingsTab = ({ agreement, setAgreement, practices, setPractices, isMobil
     if(editPractice) { setPractices(p=>p.map(x=>x.id===editPractice.id?{...form,id:x.id}:x)); }
     else { setPractices(p=>[...p,{...form,id:newId()}]); }
     setEditPractice(null);
+  };
+
+  const deactivateAccount = async () => {
+    setDeactivating(true);
+    setDeactivateError("");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const resp = await fetch("/api/deactivate-account", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token}` },
+      });
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json.error || "Could not deactivate your account.");
+      await supabase.auth.signOut();
+    } catch (e) {
+      setDeactivateError(e.message);
+      setDeactivating(false);
+    }
   };
 
   const removeAccount = async (acc) => {
@@ -1998,6 +2019,49 @@ const SettingsTab = ({ agreement, setAgreement, practices, setPractices, isMobil
           </div>
         )}
       </Card>
+
+      {/* Danger zone */}
+      <Card style={{ border:"1px solid #fecaca" }}>
+        <div style={{ fontSize:15,fontWeight:700,color:"#1e293b",marginBottom:4 }}>Deactivate account</div>
+        <div style={{ fontSize:13,color:"#64748b",marginBottom:16,lineHeight:1.5 }}>
+          Not using DentaTrack right now? You can deactivate instead of walking away — your practices, production, and expense history stay safely on file, and you can come back anytime.
+        </div>
+        <Btn variant="danger" onClick={()=>{ setShowDeactivate(true); setDeactivateError(""); }}>Deactivate my account</Btn>
+      </Card>
+
+      {showDeactivate&&(
+        <div className="dt-modal-overlay" style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1002 }}>
+          <Card style={{ width:440,padding:28 }}>
+            <div style={{ fontSize:17,fontWeight:700,color:"#1e293b",marginBottom:10 }}>Deactivate your account?</div>
+            <div style={{ fontSize:13,color:"#475569",lineHeight:1.6,marginBottom:14 }}>
+              Here's exactly what happens, so there's no surprise:
+            </div>
+            <div style={{ display:"flex",flexDirection:"column",gap:10,marginBottom:16 }}>
+              <div style={{ display:"flex",gap:10,fontSize:13,color:"#166534" }}>
+                <span>🔒</span>
+                <span>Every connected bank account is disconnected immediately, and the transaction data pulled from them is deleted — nothing sensitive is left sitting around.</span>
+              </div>
+              <div style={{ display:"flex",gap:10,fontSize:13,color:"#166534" }}>
+                <span>✓</span>
+                <span>Everything you entered yourself — practices, production, manual expenses, your profile — stays exactly as it is.</span>
+              </div>
+              <div style={{ display:"flex",gap:10,fontSize:13,color:"#166534" }}>
+                <span>↺</span>
+                <span>You can reactivate anytime just by signing back in — you'll only need to reconnect your bank accounts if you use them again.</span>
+              </div>
+            </div>
+            {deactivateError&&(
+              <div style={{ background:"#fee2e2",color:"#991b1b",borderRadius:8,padding:"10px 14px",fontSize:13,marginBottom:14 }}>{deactivateError}</div>
+            )}
+            <div style={{ display:"flex",gap:10,justifyContent:"flex-end" }}>
+              <Btn variant="secondary" onClick={()=>setShowDeactivate(false)} disabled={deactivating}>Cancel</Btn>
+              <Btn variant="danger" onClick={deactivateAccount} disabled={deactivating} style={{ opacity:deactivating?0.7:1 }}>
+                {deactivating?"Deactivating…":"Yes, deactivate my account"}
+              </Btn>
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   );
 };

@@ -32,6 +32,32 @@ export async function syncOneItem(plaid, db, item) {
     const { added: a, modified, removed, next_cursor, has_more } = resp.data;
 
     const upserts = [...a, ...modified].map((t) => toAppTransaction(t, item.user_id, item.id));
+
+    // Defensive: Plaid can occasionally reissue a fresh transaction_id for
+    // what's really the same transaction — most often a still-pending charge
+    // being re-fetched before it settles. Our upsert only catches true
+    // duplicates when the transaction_id matches exactly, so before
+    // inserting, check whether a Plaid-sourced row with the same date,
+    // amount, and description already exists. If so, reuse its
+    // transaction_id so this becomes an update to that row instead of a
+    // second copy.
+    for (const u of upserts) {
+      const { data: existing } = await db
+        .from('bank_transactions')
+        .select('plaid_transaction_id')
+        .eq('user_id', u.user_id)
+        .eq('date', u.date)
+        .eq('amount', u.amount)
+        .eq('description', u.description)
+        .not('plaid_transaction_id', 'is', null)
+        .neq('plaid_transaction_id', u.plaid_transaction_id)
+        .limit(1)
+        .maybeSingle();
+      if (existing?.plaid_transaction_id) {
+        u.plaid_transaction_id = existing.plaid_transaction_id;
+      }
+    }
+
     if (upserts.length > 0) {
       const { data: upserted, error } = await db
         .from('bank_transactions')
@@ -50,6 +76,8 @@ export async function syncOneItem(plaid, db, item) {
     hasMore = has_more;
   }
 
-  await db.from('plaid_items').update({ cursor }).eq('id', item.id);
+  const { error: cursorError } = await db.from('plaid_items').update({ cursor }).eq('id', item.id);
+  if (cursorError) throw new Error(`Failed to save sync position: ${cursorError.message}`);
+
   return { added, removedIds };
 }

@@ -1416,8 +1416,8 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
 
                       {/* Action bar */}
                       <div style={{ display:"flex",gap:8,marginTop:14,alignItems:"center",flexWrap:"wrap" }}>
-                        <Btn size="sm" onClick={()=>{ tagBank(b.id,{...b,reviewed:true,userTagged:true}); setExpandedId(null); }}>
-                          ✓ Mark reviewed
+                        <Btn size="sm" onClick={()=>{ setBanks(bk=>bk.map(x=>x.id===b.id?{...x,reviewed:!x.reviewed}:x)); if(!b.reviewed) setExpandedId(null); }}>
+                          {b.reviewed ? "↩ Unmark reviewed" : "✓ Mark reviewed"}
                         </Btn>
                         {!pendingRule&&(
                           <Btn size="sm" variant="secondary"

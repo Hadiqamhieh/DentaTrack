@@ -9,6 +9,12 @@ create table profiles (
   is_corp boolean default false,
   salary numeric default 0,
   dividends numeric default 0,
+  province text,
+  license_number text,
+  school text,
+  graduating_year text,
+  deactivated boolean default false,
+  tour_completed boolean default true,
   created_at timestamptz default now()
 );
 
@@ -72,9 +78,11 @@ create table bank_transactions (
   notes text,
   manual boolean default false,
   plaid_transaction_id text,
+  plaid_account_id text,
+  splits jsonb,
   created_at timestamptz default now()
 );
-create unique index bank_transactions_plaid_txn_uidx on bank_transactions(plaid_transaction_id) where plaid_transaction_id is not null;
+create unique index bank_transactions_plaid_txn_uidx on bank_transactions(plaid_transaction_id);
 
 create table bank_rules (
   id uuid primary key default gen_random_uuid(),
@@ -154,7 +162,7 @@ create policy "own accounts"  on connected_accounts for all using (auth.uid() = 
 create function public.handle_new_user()
 returns trigger as $$
 begin
-  insert into public.profiles (id, name) values (new.id, new.raw_user_meta_data->>'name');
+  insert into public.profiles (id, name, tour_completed) values (new.id, new.raw_user_meta_data->>'name', false);
   return new;
 end;
 $$ language plpgsql security definer;

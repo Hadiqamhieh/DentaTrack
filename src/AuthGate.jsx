@@ -25,11 +25,38 @@ const Logo = () => (
   </div>
 );
 
+const PasswordInput = ({ value, onChange, placeholder, minLength }) => {
+  const [show, setShow] = useState(false);
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        type={show ? 'text' : 'password'}
+        placeholder={placeholder}
+        value={value}
+        onChange={onChange}
+        required
+        minLength={minLength}
+        style={{ ...inputStyle, width: '100%', boxSizing: 'border-box', paddingRight: 40 }}
+      />
+      <button
+        type="button"
+        onClick={() => setShow(s => !s)}
+        tabIndex={-1}
+        style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', padding: 8, color: '#94a3b8', fontSize: 13 }}
+        aria-label={show ? 'Hide password' : 'Show password'}
+      >
+        {show ? '🙈' : '👁️'}
+      </button>
+    </div>
+  );
+};
+
 export default function AuthGate({ children }) {
   const [session, setSession] = useState(undefined); // undefined = still checking
   const [mode, setMode] = useState('signin'); // 'signin' | 'signup' | 'check-email'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -66,6 +93,10 @@ export default function AuthGate({ children }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
+    if (mode === 'signup' && password !== confirmPassword) {
+      setError('Passwords don\u2019t match — double check and try again.');
+      return;
+    }
     setLoading(true);
     if (mode === 'signup') {
       const { data, error } = await supabase.auth.signUp({
@@ -191,15 +222,20 @@ export default function AuthGate({ children }) {
             required
             style={inputStyle}
           />
-          <input
-            type="password"
+          <PasswordInput
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            required
             minLength={6}
-            style={inputStyle}
           />
+          {mode === 'signup' && (
+            <PasswordInput
+              placeholder="Confirm password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              minLength={6}
+            />
+          )}
 
           {error && <div style={{ fontSize: 13, color: '#dc2626' }}>{error}</div>}
 
@@ -213,7 +249,7 @@ export default function AuthGate({ children }) {
         </form>
 
         <button
-          onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setError(''); }}
+          onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setError(''); setConfirmPassword(''); }}
           style={{ background: 'none', border: 'none', color: '#64748b', fontSize: 13, cursor: 'pointer', marginTop: 16, textAlign: 'center', width: '100%' }}
         >
           {mode === 'signin' ? "Don't have an account? Sign up" : 'Already have an account? Sign in'}

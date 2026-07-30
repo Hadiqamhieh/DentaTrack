@@ -2551,14 +2551,19 @@ export default function App() {
       setPullDist(0);
     }
   };
+  const [refreshDone, setRefreshDone] = useState(false);
   const handleTouchEnd = async () => {
     if (!pullActive.current) return;
     pullActive.current = false;
     if (pullDist > 50) {
       setRefreshing(true);
       setPullDist(56);
-      await refreshAll();
+      // Enforce a minimum visible duration — a real refresh can finish in
+      // under 200ms, which reads as "did anything even happen?" without this.
+      await Promise.all([refreshAll(), new Promise(r => setTimeout(r, 700))]);
       setRefreshing(false);
+      setRefreshDone(true);
+      setTimeout(() => setRefreshDone(false), 1200);
     }
     setPullDist(0);
   };
@@ -2679,16 +2684,25 @@ export default function App() {
       <GlobalStyles />
 
       {/* Pull-to-refresh indicator */}
-      {isMobile&&(pullDist>0||refreshing)&&(
-        <div style={{ position:"fixed",top:0,left:0,right:0,display:"flex",justifyContent:"center",alignItems:"flex-end",height:pullDist,overflow:"hidden",zIndex:150,transition:refreshing?"height 0.15s":"none",pointerEvents:"none" }}>
+      {isMobile&&(pullDist>0||refreshing||refreshDone)&&(
+        <div style={{ position:"fixed",top:0,left:0,right:0,display:"flex",justifyContent:"center",alignItems:"flex-end",height:(refreshing||refreshDone)?56:pullDist,overflow:"hidden",zIndex:150,transition:"height 0.2s",pointerEvents:"none" }}>
           <div style={{ paddingBottom:8,display:"flex",flexDirection:"column",alignItems:"center",gap:2 }}>
-            <div style={{
-              width:20,height:20,borderRadius:"50%",border:"2.5px solid #0F6E56",borderTopColor:"transparent",
-              animation: refreshing ? "dt-spin 0.7s linear infinite" : "none",
-              transform: refreshing ? "none" : `rotate(${pullDist*4}deg)`,
-              transition: refreshing ? "none" : "transform 0.05s linear",
-            }}/>
-            <span style={{ fontSize:10,color:"#94a3b8",fontWeight:600 }}>{refreshing?"Refreshing…":pullDist>50?"Release to refresh":"Pull to refresh"}</span>
+            {refreshDone ? (
+              <>
+                <div style={{ width:20,height:20,borderRadius:"50%",background:"#0F6E56",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12 }}>✓</div>
+                <span style={{ fontSize:10,color:"#0F6E56",fontWeight:600 }}>Updated</span>
+              </>
+            ) : (
+              <>
+                <div style={{
+                  width:20,height:20,borderRadius:"50%",border:"2.5px solid #0F6E56",borderTopColor:"transparent",
+                  animation: refreshing ? "dt-spin 0.7s linear infinite" : "none",
+                  transform: refreshing ? "none" : `rotate(${pullDist*4}deg)`,
+                  transition: refreshing ? "none" : "transform 0.05s linear",
+                }}/>
+                <span style={{ fontSize:10,color:"#94a3b8",fontWeight:600 }}>{refreshing?"Refreshing…":pullDist>50?"Release to refresh":"Pull to refresh"}</span>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -2790,17 +2804,17 @@ export default function App() {
 
       {/* Mobile bottom tab bar — 2 active tabs + future stubs */}
       {isMobile&&(
-        <nav style={{ position:"fixed",left:12,right:12,bottom:"calc(12px + env(safe-area-inset-bottom))",background:"#fff",borderRadius:18,border:"1px solid #e2e8f0",boxShadow:"0 8px 24px rgba(15,23,42,0.12)",display:"flex",zIndex:100,overflow:"hidden" }}>
+        <nav style={{ position:"fixed",left:0,right:0,bottom:0,background:"#fff",borderTop:"1px solid #e2e8f0",boxShadow:"0 -2px 12px rgba(15,23,42,0.05)",display:"flex",zIndex:100,paddingBottom:"calc(14px + env(safe-area-inset-bottom))" }}>
           {TABS.filter(t=>t.active).map(t=>(
-            <button key={t.key} onClick={()=>setTab(t.key)} style={{ flex:1,border:"none",background:"transparent",cursor:"pointer",padding:"10px 0",display:"flex",flexDirection:"column",alignItems:"center",gap:2,color:tab===t.key?"#0F6E56":"#94a3b8" }}>
-              <span style={{ fontSize:18 }}>{t.icon}</span>
+            <button key={t.key} onClick={()=>setTab(t.key)} style={{ flex:1,border:"none",background:"transparent",cursor:"pointer",padding:"10px 0 0",display:"flex",flexDirection:"column",alignItems:"center",gap:3,color:tab===t.key?"#0F6E56":"#94a3b8" }}>
+              <span style={{ fontSize:19 }}>{t.icon}</span>
               <span style={{ fontSize:11,fontWeight:600 }}>{t.label}</span>
             </button>
           ))}
           {/* Future tab stubs — greyed out, non-tappable */}
           {FUTURE_TABS.map(ft=>(
-            <button key={ft.key} disabled style={{ flex:1,border:"none",background:"transparent",cursor:"default",padding:"10px 0",display:"flex",flexDirection:"column",alignItems:"center",gap:2,color:"#d1d5db",opacity:0.5 }}>
-              <span style={{ fontSize:18 }}>{ft.icon}</span>
+            <button key={ft.key} disabled style={{ flex:1,border:"none",background:"transparent",cursor:"default",padding:"10px 0 0",display:"flex",flexDirection:"column",alignItems:"center",gap:3,color:"#d1d5db",opacity:0.5 }}>
+              <span style={{ fontSize:19 }}>{ft.icon}</span>
               <span style={{ fontSize:10,fontWeight:600 }}>{ft.label}</span>
             </button>
           ))}

@@ -36,16 +36,16 @@ const PasswordInput = ({ value, onChange, placeholder, minLength }) => {
         onChange={onChange}
         required
         minLength={minLength}
-        style={{ ...inputStyle, width: '100%', boxSizing: 'border-box', paddingRight: 40 }}
+        style={{ ...inputStyle, width: '100%', boxSizing: 'border-box', paddingRight: 56 }}
       />
       <button
         type="button"
         onClick={() => setShow(s => !s)}
         tabIndex={-1}
-        style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', padding: 8, color: '#94a3b8', fontSize: 13 }}
+        style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', padding: '8px 8px', color: '#0F6E56', fontSize: 12, fontWeight: 600 }}
         aria-label={show ? 'Hide password' : 'Show password'}
       >
-        {show ? '🙈' : '👁️'}
+        {show ? 'Hide' : 'Show'}
       </button>
     </div>
   );

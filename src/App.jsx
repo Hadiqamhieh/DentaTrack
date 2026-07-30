@@ -2560,10 +2560,10 @@ export default function App() {
       setPullDist(56);
       // Enforce a minimum visible duration — a real refresh can finish in
       // under 200ms, which reads as "did anything even happen?" without this.
-      await Promise.all([refreshAll(), new Promise(r => setTimeout(r, 700))]);
+      await Promise.all([refreshAll(), new Promise(r => setTimeout(r, 1000))]);
       setRefreshing(false);
       setRefreshDone(true);
-      setTimeout(() => setRefreshDone(false), 1200);
+      setTimeout(() => setRefreshDone(false), 900);
     }
     setPullDist(0);
   };
@@ -2684,23 +2684,29 @@ export default function App() {
       <GlobalStyles />
 
       {/* Pull-to-refresh indicator */}
-      {isMobile&&(pullDist>0||refreshing||refreshDone)&&(
-        <div style={{ position:"fixed",top:0,left:0,right:0,display:"flex",justifyContent:"center",alignItems:"flex-end",height:(refreshing||refreshDone)?56:pullDist,overflow:"hidden",zIndex:150,transition:"height 0.2s",pointerEvents:"none" }}>
-          <div style={{ paddingBottom:8,display:"flex",flexDirection:"column",alignItems:"center",gap:2 }}>
+      {isMobile&&pullDist>0&&!refreshing&&!refreshDone&&(
+        <div style={{ position:"fixed",top:0,left:0,right:0,display:"flex",justifyContent:"center",alignItems:"flex-end",height:pullDist,overflow:"hidden",zIndex:200,pointerEvents:"none" }}>
+          <div style={{ paddingBottom:8 }}>
+            <div style={{
+              width:22,height:22,borderRadius:"50%",border:"2.5px solid #0F6E56",borderTopColor:"transparent",
+              transform:`rotate(${pullDist*4}deg)`, transition:"transform 0.05s linear",
+            }}/>
+          </div>
+        </div>
+      )}
+
+      {(refreshing||refreshDone)&&(
+        <div style={{ position:"fixed",top:20,left:0,right:0,display:"flex",justifyContent:"center",zIndex:200,pointerEvents:"none" }}>
+          <div style={{ background:"#1e293b",color:"#fff",borderRadius:99,padding:"10px 20px",display:"flex",alignItems:"center",gap:10,boxShadow:"0 8px 24px rgba(0,0,0,0.25)" }}>
             {refreshDone ? (
               <>
-                <div style={{ width:20,height:20,borderRadius:"50%",background:"#0F6E56",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12 }}>✓</div>
-                <span style={{ fontSize:10,color:"#0F6E56",fontWeight:600 }}>Updated</span>
+                <span style={{ fontSize:15 }}>✓</span>
+                <span style={{ fontSize:13,fontWeight:600 }}>Updated</span>
               </>
             ) : (
               <>
-                <div style={{
-                  width:20,height:20,borderRadius:"50%",border:"2.5px solid #0F6E56",borderTopColor:"transparent",
-                  animation: refreshing ? "dt-spin 0.7s linear infinite" : "none",
-                  transform: refreshing ? "none" : `rotate(${pullDist*4}deg)`,
-                  transition: refreshing ? "none" : "transform 0.05s linear",
-                }}/>
-                <span style={{ fontSize:10,color:"#94a3b8",fontWeight:600 }}>{refreshing?"Refreshing…":pullDist>50?"Release to refresh":"Pull to refresh"}</span>
+                <div style={{ width:15,height:15,borderRadius:"50%",border:"2px solid rgba(255,255,255,0.3)",borderTopColor:"#fff",animation:"dt-spin 0.7s linear infinite" }}/>
+                <span style={{ fontSize:13,fontWeight:600 }}>Refreshing…</span>
               </>
             )}
           </div>

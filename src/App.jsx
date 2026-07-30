@@ -21,6 +21,7 @@ const useIsMobile = () => {
 const GlobalStyles = () => (
   <style>{`
     .dt-app { -webkit-tap-highlight-color: transparent; }
+    @keyframes dt-spin { to { transform: rotate(360deg); } }
     .dt-table-wrap { overflow-x: auto; }
     @media (max-width: 720px) {
       .dt-grid-cols { grid-template-columns: 1fr !important; }
@@ -2512,6 +2513,55 @@ export default function App() {
   const [connectedAccounts, setConnectedAccounts] = useState([]);
   const [menuOpen, setMenuOpen]     = useState(false);
   const [settingsSection, setSettingsSection] = useState(null);
+  const [pullDist, setPullDist]     = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const touchStartY = useRef(0);
+  const pullActive   = useRef(false);
+
+  const refreshAll = async () => {
+    if (!userId) return;
+    const [profile, prac, prod, exp, bnk, rules, accts] = await Promise.all([
+      loadProfile(userId), loadPractices(userId), loadProduction(userId), loadExpenses(userId),
+      loadBanks(userId), loadBankRules(userId), loadConnectedAccounts(userId),
+    ]);
+    if (profile) setAgreement(profile);
+    setPractices(prac);
+    setProduction(prod);
+    setExpenses(exp);
+    setBanks(bnk);
+    setBankRules(rules);
+    setConnectedAccounts(accts);
+  };
+
+  // Pull-to-refresh — separate from the browser/OS's own refresh, since a
+  // standalone installed app has no browser chrome to pull from. Only
+  // engages when already scrolled to the very top.
+  const handleTouchStart = (e) => {
+    if (!isMobile || refreshing || window.scrollY > 0) return;
+    touchStartY.current = e.touches[0].clientY;
+    pullActive.current = true;
+  };
+  const handleTouchMove = (e) => {
+    if (!pullActive.current || refreshing) return;
+    const delta = e.touches[0].clientY - touchStartY.current;
+    if (delta > 0 && window.scrollY === 0) {
+      setPullDist(Math.min(delta * 0.5, 80));
+    } else {
+      pullActive.current = false;
+      setPullDist(0);
+    }
+  };
+  const handleTouchEnd = async () => {
+    if (!pullActive.current) return;
+    pullActive.current = false;
+    if (pullDist > 50) {
+      setRefreshing(true);
+      setPullDist(56);
+      await refreshAll();
+      setRefreshing(false);
+    }
+    setPullDist(0);
+  };
 
   // Load everything for the logged-in dentist once, on mount
   useEffect(() => {
@@ -2625,14 +2675,29 @@ export default function App() {
     : "DA";
 
   return(
-    <div className="dt-app" style={{ minHeight:"100vh",background:"#f8fafc",fontFamily:"system-ui,-apple-system,sans-serif",paddingBottom:isMobile?70:0 }} onClick={()=>menuOpen&&setMenuOpen(false)}>
+    <div className="dt-app" style={{ minHeight:"100vh",background:"#f8fafc",fontFamily:"system-ui,-apple-system,sans-serif",paddingBottom:isMobile?90:0 }} onClick={()=>menuOpen&&setMenuOpen(false)} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
       <GlobalStyles />
+
+      {/* Pull-to-refresh indicator */}
+      {isMobile&&(pullDist>0||refreshing)&&(
+        <div style={{ position:"fixed",top:0,left:0,right:0,display:"flex",justifyContent:"center",alignItems:"flex-end",height:pullDist,overflow:"hidden",zIndex:150,transition:refreshing?"height 0.15s":"none",pointerEvents:"none" }}>
+          <div style={{ paddingBottom:8,display:"flex",flexDirection:"column",alignItems:"center",gap:2 }}>
+            <div style={{
+              width:20,height:20,borderRadius:"50%",border:"2.5px solid #0F6E56",borderTopColor:"transparent",
+              animation: refreshing ? "dt-spin 0.7s linear infinite" : "none",
+              transform: refreshing ? "none" : `rotate(${pullDist*4}deg)`,
+              transition: refreshing ? "none" : "transform 0.05s linear",
+            }}/>
+            <span style={{ fontSize:10,color:"#94a3b8",fontWeight:600 }}>{refreshing?"Refreshing…":pullDist>50?"Release to refresh":"Pull to refresh"}</span>
+          </div>
+        </div>
+      )}
 
       {/* Header */}
       <div style={{ background:"#fff",borderBottom:"1px solid #e2e8f0",padding:isMobile?"0 16px":"0 32px",position:"sticky",top:0,zIndex:100 }}>
         <div style={{ maxWidth:1100,margin:"0 auto",display:"flex",alignItems:"center",gap:24 }}>
-          {/* Logo */}
-          <div style={{ padding:"14px 0",display:"flex",alignItems:"center",gap:10,flex:1 }}>
+          {/* Logo — always returns to Home */}
+          <div onClick={()=>setTab("home")} style={{ padding:"14px 0",display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer" }}>
             <div style={{ width:30,height:30,background:"#0F6E56",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:14,flexShrink:0 }}>D</div>
             <div style={{ minWidth:0 }}>
               <div style={{ fontWeight:800,fontSize:15,color:"#1e293b",letterSpacing:"-0.01em" }}>DentaTrack</div>
@@ -2725,16 +2790,16 @@ export default function App() {
 
       {/* Mobile bottom tab bar — 2 active tabs + future stubs */}
       {isMobile&&(
-        <nav style={{ position:"fixed",bottom:0,left:0,right:0,background:"#fff",borderTop:"1px solid #e2e8f0",display:"flex",zIndex:100,paddingBottom:"env(safe-area-inset-bottom)" }}>
+        <nav style={{ position:"fixed",left:12,right:12,bottom:"calc(12px + env(safe-area-inset-bottom))",background:"#fff",borderRadius:18,border:"1px solid #e2e8f0",boxShadow:"0 8px 24px rgba(15,23,42,0.12)",display:"flex",zIndex:100,overflow:"hidden" }}>
           {TABS.filter(t=>t.active).map(t=>(
-            <button key={t.key} onClick={()=>setTab(t.key)} style={{ flex:1,border:"none",background:"transparent",cursor:"pointer",padding:"8px 0 10px",display:"flex",flexDirection:"column",alignItems:"center",gap:2,color:tab===t.key?"#0F6E56":"#94a3b8" }}>
+            <button key={t.key} onClick={()=>setTab(t.key)} style={{ flex:1,border:"none",background:"transparent",cursor:"pointer",padding:"10px 0",display:"flex",flexDirection:"column",alignItems:"center",gap:2,color:tab===t.key?"#0F6E56":"#94a3b8" }}>
               <span style={{ fontSize:18 }}>{t.icon}</span>
               <span style={{ fontSize:11,fontWeight:600 }}>{t.label}</span>
             </button>
           ))}
           {/* Future tab stubs — greyed out, non-tappable */}
           {FUTURE_TABS.map(ft=>(
-            <button key={ft.key} disabled style={{ flex:1,border:"none",background:"transparent",cursor:"default",padding:"8px 0 10px",display:"flex",flexDirection:"column",alignItems:"center",gap:2,color:"#d1d5db",opacity:0.5 }}>
+            <button key={ft.key} disabled style={{ flex:1,border:"none",background:"transparent",cursor:"default",padding:"10px 0",display:"flex",flexDirection:"column",alignItems:"center",gap:2,color:"#d1d5db",opacity:0.5 }}>
               <span style={{ fontSize:18 }}>{ft.icon}</span>
               <span style={{ fontSize:10,fontWeight:600 }}>{ft.label}</span>
             </button>

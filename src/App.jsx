@@ -20,6 +20,7 @@ const useIsMobile = () => {
 
 const GlobalStyles = () => (
   <style>{`
+    html, body { overscroll-behavior-y: contain; }
     .dt-app { -webkit-tap-highlight-color: transparent; }
     @keyframes dt-spin { to { transform: rotate(360deg); } }
     .dt-table-wrap { overflow-x: auto; }
@@ -2515,8 +2516,11 @@ export default function App() {
   const [settingsSection, setSettingsSection] = useState(null);
   const [pullDist, setPullDist]     = useState(0);
   const [refreshing, setRefreshing] = useState(false);
-  const touchStartY = useRef(0);
-  const pullActive   = useRef(false);
+  const [refreshDone, setRefreshDone] = useState(false);
+  const touchStartY   = useRef(0);
+  const pullActive    = useRef(false);
+  const pullDistRef   = useRef(0);
+  const refreshingRef = useRef(false);
 
   const refreshAll = async () => {
     if (!userId) return;
@@ -2534,39 +2538,65 @@ export default function App() {
   };
 
   // Pull-to-refresh — separate from the browser/OS's own refresh, since a
-  // standalone installed app has no browser chrome to pull from. Only
-  // engages when already scrolled to the very top.
-  const handleTouchStart = (e) => {
-    if (!isMobile || refreshing || window.scrollY > 0) return;
-    touchStartY.current = e.touches[0].clientY;
-    pullActive.current = true;
-  };
-  const handleTouchMove = (e) => {
-    if (!pullActive.current || refreshing) return;
-    const delta = e.touches[0].clientY - touchStartY.current;
-    if (delta > 0 && window.scrollY === 0) {
-      setPullDist(Math.min(delta * 0.5, 80));
-    } else {
+  // standalone installed app has no browser chrome to pull from. Uses real
+  // browser-level touch listeners (not React's synthetic ones, which are
+  // passive by default and let the OS's native scroll-bounce swallow the
+  // gesture before our code can react to it reliably) so we can fully take
+  // over the gesture and stop it from conflicting with native scrolling.
+  useEffect(() => {
+    if (!isMobile) return;
+
+    const getScrollTop = () => window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
+
+    const onTouchStart = (e) => {
+      if (refreshingRef.current || getScrollTop() > 0) return;
+      touchStartY.current = e.touches[0].clientY;
+      pullActive.current = true;
+    };
+
+    const onTouchMove = (e) => {
+      if (!pullActive.current || refreshingRef.current) return;
+      const delta = e.touches[0].clientY - touchStartY.current;
+      if (delta > 0 && getScrollTop() === 0) {
+        e.preventDefault(); // take over the gesture from native bounce/scroll
+        const dist = Math.min(delta * 0.5, 80);
+        pullDistRef.current = dist;
+        setPullDist(dist);
+      } else {
+        pullActive.current = false;
+        pullDistRef.current = 0;
+        setPullDist(0);
+      }
+    };
+
+    const onTouchEnd = async () => {
+      if (!pullActive.current) return;
       pullActive.current = false;
+      if (pullDistRef.current > 45) {
+        refreshingRef.current = true;
+        setRefreshing(true);
+        setPullDist(56);
+        // Enforce a minimum visible duration — a real refresh can finish in
+        // under 200ms, which reads as "did anything even happen?" without this.
+        await Promise.all([refreshAll(), new Promise(r => setTimeout(r, 1000))]);
+        refreshingRef.current = false;
+        setRefreshing(false);
+        setRefreshDone(true);
+        setTimeout(() => setRefreshDone(false), 900);
+      }
+      pullDistRef.current = 0;
       setPullDist(0);
-    }
-  };
-  const [refreshDone, setRefreshDone] = useState(false);
-  const handleTouchEnd = async () => {
-    if (!pullActive.current) return;
-    pullActive.current = false;
-    if (pullDist > 50) {
-      setRefreshing(true);
-      setPullDist(56);
-      // Enforce a minimum visible duration — a real refresh can finish in
-      // under 200ms, which reads as "did anything even happen?" without this.
-      await Promise.all([refreshAll(), new Promise(r => setTimeout(r, 1000))]);
-      setRefreshing(false);
-      setRefreshDone(true);
-      setTimeout(() => setRefreshDone(false), 900);
-    }
-    setPullDist(0);
-  };
+    };
+
+    document.addEventListener('touchstart', onTouchStart, { passive: true });
+    document.addEventListener('touchmove', onTouchMove, { passive: false });
+    document.addEventListener('touchend', onTouchEnd, { passive: true });
+    return () => {
+      document.removeEventListener('touchstart', onTouchStart);
+      document.removeEventListener('touchmove', onTouchMove);
+      document.removeEventListener('touchend', onTouchEnd);
+    };
+  }, [isMobile, userId]);
 
   // Load everything for the logged-in dentist once, on mount
   useEffect(() => {
@@ -2680,7 +2710,7 @@ export default function App() {
     : "DA";
 
   return(
-    <div className="dt-app" style={{ minHeight:"100vh",background:"#f8fafc",fontFamily:"system-ui,-apple-system,sans-serif",paddingBottom:isMobile?90:0 }} onClick={()=>menuOpen&&setMenuOpen(false)} onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}>
+    <div className="dt-app" style={{ minHeight:"100vh",background:"#f8fafc",fontFamily:"system-ui,-apple-system,sans-serif",paddingBottom:isMobile?90:0 }} onClick={()=>menuOpen&&setMenuOpen(false)}>
       <GlobalStyles />
 
       {/* Pull-to-refresh indicator */}

@@ -18,9 +18,24 @@ const useIsMobile = () => {
   return isMobile;
 };
 
+// True only when running as the actual installed app (added to home screen /
+// installed as a PWA) — false for a normal browser tab, even on mobile.
+// Safari's own pull-to-refresh should keep working untouched for anyone
+// just visiting the site; our custom refresh gesture is only for people
+// using the installed app, which has no browser chrome to pull from.
+const useIsStandalone = () => {
+  const [isStandalone, setIsStandalone] = useState(false);
+  useEffect(() => {
+    const check = () =>
+      window.matchMedia?.('(display-mode: standalone)').matches ||
+      window.navigator.standalone === true; // iOS Safari's own flag
+    setIsStandalone(check());
+  }, []);
+  return isStandalone;
+};
+
 const GlobalStyles = () => (
   <style>{`
-    html, body { overscroll-behavior-y: contain; }
     .dt-app { -webkit-tap-highlight-color: transparent; }
     @keyframes dt-spin { to { transform: rotate(360deg); } }
     .dt-table-wrap { overflow-x: auto; }
@@ -2504,6 +2519,8 @@ export default function App() {
   const [tab, setTab]               = useState("home");
   const [userId, setUserId]         = useState(null);
   const [dataLoaded, setDataLoaded] = useState(false);
+  const isMobile = useIsMobile();
+  const isStandalone = useIsStandalone();
 
   const [production, setProduction] = useState([]);
   const [expenses, setExpenses]     = useState([]);
@@ -2537,14 +2554,17 @@ export default function App() {
     setConnectedAccounts(accts);
   };
 
-  // Pull-to-refresh — separate from the browser/OS's own refresh, since a
-  // standalone installed app has no browser chrome to pull from. Uses real
-  // browser-level touch listeners (not React's synthetic ones, which are
-  // passive by default and let the OS's native scroll-bounce swallow the
-  // gesture before our code can react to it reliably) so we can fully take
-  // over the gesture and stop it from conflicting with native scrolling.
+  // Pull-to-refresh — only for the installed, standalone app, which has no
+  // browser chrome of its own to pull from. Someone just visiting the site
+  // in a normal Safari/Chrome tab keeps their browser's own native
+  // pull-to-refresh completely untouched — this never engages for them.
   useEffect(() => {
-    if (!isMobile) return;
+    if (!isStandalone) return;
+
+    // Only suppress the native bounce/refresh while the app is running
+    // standalone — restored on cleanup so it never affects a regular tab.
+    const prevOverscroll = document.documentElement.style.overscrollBehaviorY;
+    document.documentElement.style.overscrollBehaviorY = 'contain';
 
     const getScrollTop = () => window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0;
 
@@ -2592,11 +2612,12 @@ export default function App() {
     document.addEventListener('touchmove', onTouchMove, { passive: false });
     document.addEventListener('touchend', onTouchEnd, { passive: true });
     return () => {
+      document.documentElement.style.overscrollBehaviorY = prevOverscroll;
       document.removeEventListener('touchstart', onTouchStart);
       document.removeEventListener('touchmove', onTouchMove);
       document.removeEventListener('touchend', onTouchEnd);
     };
-  }, [isMobile, userId]);
+  }, [isStandalone, userId]);
 
   // Load everything for the logged-in dentist once, on mount
   useEffect(() => {
@@ -2673,8 +2694,6 @@ export default function App() {
     if (connectedAccts?.length) setConnectedAccounts(a => [...a, ...connectedAccts]);
   };
 
-  const isMobile = useIsMobile();
-
   if (!dataLoaded) {
     return (
       <div style={{ minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"system-ui,-apple-system,sans-serif",color:"#94a3b8" }}>
@@ -2714,7 +2733,7 @@ export default function App() {
       <GlobalStyles />
 
       {/* Pull-to-refresh indicator */}
-      {isMobile&&pullDist>0&&!refreshing&&!refreshDone&&(
+      {isStandalone&&pullDist>0&&!refreshing&&!refreshDone&&(
         <div style={{ position:"fixed",top:0,left:0,right:0,display:"flex",justifyContent:"center",alignItems:"flex-end",height:pullDist,overflow:"hidden",zIndex:200,pointerEvents:"none" }}>
           <div style={{ paddingBottom:8 }}>
             <div style={{

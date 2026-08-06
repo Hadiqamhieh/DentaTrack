@@ -53,7 +53,7 @@ const GlobalStyles = () => (
   `}</style>
 );
 
-const fmt = (n) => new Intl.NumberFormat("en-CA", { style:"currency", currency:"CAD", maximumFractionDigits:0 }).format(n);
+const fmt = (n) => new Intl.NumberFormat("en-CA", { style:"currency", currency:"CAD" }).format(n);
 const fmtFull = (n) => new Intl.NumberFormat("en-CA", { style:"currency", currency:"CAD" }).format(n);
 const pct = (a, b) => b ? ((a/b)*100).toFixed(1)+"%" : "—";
 

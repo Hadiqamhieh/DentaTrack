@@ -6,7 +6,7 @@
 // expects ({ imageBase64, mimeType, prompt } -> { text }) so ScanModal and
 // ReceiptScanner didn't need any changes at all.
 
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {

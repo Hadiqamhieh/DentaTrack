@@ -46,15 +46,18 @@ async function callGemini(apiKey, { imageBase64, mimeType, prompt }) {
   return text;
 }
 
-// A result that's entirely null/blank fields is almost always the model
-// failing to read the image rather than a genuinely blank receipt — worth
-// one silent retry before giving up and showing the person nothing.
+// A result where most fields came back null/blank is almost always the
+// model failing to read the image rather than a genuinely sparse receipt —
+// worth retrying before giving up and showing the person an incomplete scan.
+// (A single legitimately-blank optional field, like "lab fees" on a day
+// sheet that had none, shouldn't trigger this — only a majority-blank result.)
 function looksEmpty(text) {
   try {
     const parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
     const values = Object.values(parsed);
     if (values.length === 0) return true;
-    return values.every(v => v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0));
+    const emptyCount = values.filter(v => v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0)).length;
+    return emptyCount / values.length > 0.5;
   } catch {
     return true; // unparseable is treated the same as empty — worth a retry
   }
@@ -77,9 +80,11 @@ export default async function handler(req, res) {
 
   try {
     let text = await callGemini(apiKey, { imageBase64, mimeType, prompt });
-    if (looksEmpty(text)) {
-      // One automatic, silent retry — the person never sees this happen.
+    let attempts = 1;
+    // Try up to 3 times total — each retry is silent to the person using it.
+    while (looksEmpty(text) && attempts < 3) {
       text = await callGemini(apiKey, { imageBase64, mimeType, prompt });
+      attempts++;
     }
     // Match the shape the frontend already expects from the old provider.
     return res.status(200).json({ text });

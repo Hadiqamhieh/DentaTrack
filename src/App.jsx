@@ -381,12 +381,17 @@ const ScanModal = ({ title, prompt, onClose, onResult }) => {
         </div>)}
         {error&&<div style={{ marginTop:14,background:"#fee2e2",color:"#991b1b",borderRadius:8,padding:"10px 14px",fontSize:13 }}>{error}</div>}
         {result&&(<div style={{ marginTop:16 }}>
-          <div style={{ fontSize:13,fontWeight:600,color:"#475569",marginBottom:10 }}>Extracted — review before importing</div>
-          <div style={{ background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:8,padding:"12px 14px",marginBottom:14 }}>
+          <div style={{ fontSize:13,fontWeight:600,color:"#475569",marginBottom:4 }}>Review before importing</div>
+          <div style={{ fontSize:11,color:"#94a3b8",marginBottom:10 }}>Scans aren't perfect — fix anything wrong or fill in anything it missed.</div>
+          <div style={{ display:"flex",flexDirection:"column",gap:8,marginBottom:14 }}>
             {Object.entries(result).map(([k,v])=>(
-              <div key={k} style={{ display:"flex",justifyContent:"space-between",fontSize:13,borderBottom:"1px solid #f1f5f9",padding:"4px 0" }}>
-                <span style={{ color:"#64748b",textTransform:"capitalize" }}>{k.replace(/_/g," ")}</span>
-                <span style={{ color:"#1e293b",fontWeight:500 }}>{Array.isArray(v)?v.length+" items":String(v)}</span>
+              <div key={k}>
+                <div style={{ fontSize:11,color:"#64748b",textTransform:"capitalize",marginBottom:3 }}>{k.replace(/_/g," ")}</div>
+                <input
+                  value={Array.isArray(v)?v.join(", "):String(v??"")}
+                  onChange={e=>setResult(r=>({...r,[k]:e.target.value}))}
+                  style={{ width:"100%",boxSizing:"border-box",padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:7,fontSize:13,color:"#1e293b" }}
+                />
               </div>
             ))}
           </div>
@@ -496,7 +501,7 @@ const LogModal = ({ practices, onSave, onClose }) => {
 
         <div style={{ display:"flex",gap:2,background:"#f1f5f9",borderRadius:10,padding:3,marginBottom:18 }}>
           <button onClick={()=>setMode("manual")} style={{ flex:1,padding:"8px 0",border:"none",borderRadius:8,fontSize:13,fontWeight:600,cursor:"pointer",background:mode==="manual"?"#fff":"transparent",color:mode==="manual"?"#0F6E56":"#64748b" }}>Type it in</button>
-          <button disabled title="Coming soon" style={{ flex:1,padding:"8px 0",border:"none",borderRadius:8,fontSize:13,fontWeight:600,cursor:"not-allowed",background:"transparent",color:"#cbd5e1" }}>📋 Scan day sheet <span style={{ fontSize:10,fontWeight:700 }}>(soon)</span></button>
+          <button onClick={()=>setMode("scan")} style={{ flex:1,padding:"8px 0",border:"none",borderRadius:8,fontSize:13,fontWeight:600,cursor:"pointer",background:mode==="scan"?"#fff":"transparent",color:mode==="scan"?"#0F6E56":"#64748b" }}>📋 Scan day sheet</button>
         </div>
 
         <div style={{ display:"flex",flexDirection:"column",gap:14 }}>
@@ -507,7 +512,7 @@ const LogModal = ({ practices, onSave, onClose }) => {
 
           {mode==="manual" ? (
             <>
-              <div title="Coming soon" style={{ display:"flex",alignItems:"center",gap:6,background:"none",border:"1px dashed #e2e8f0",borderRadius:8,padding:"8px 10px",fontSize:12,fontWeight:600,color:"#cbd5e1",cursor:"not-allowed",width:"fit-content" }}>📷 Scan day sheet to autofill <span style={{ fontSize:10,fontWeight:700 }}>(coming soon)</span></div>
+              <button onClick={()=>setShowScan(true)} style={{ display:"flex",alignItems:"center",gap:6,background:"none",border:"1px dashed #cbd5e1",borderRadius:8,padding:"8px 10px",fontSize:12,fontWeight:600,color:"#0F6E56",cursor:"pointer",width:"fit-content" }}>📷 Scan day sheet to autofill</button>
               <Input label="Total production today ($)" type="number" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0" autoFocus />
               {tracksLab&&(
                 <Input label="Lab fees today ($, if any)" type="number" value={labFees} onChange={e=>setLabFees(e.target.value)} placeholder="0" />
@@ -1027,20 +1032,23 @@ const ReceiptScanner = ({ bankId, onAttach, onClose }) => {
           </div>
         ) : (
           <div>
-            <div style={{ background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,padding:"14px 16px",marginBottom:16 }}>
-              <div style={{ fontSize:12,color:"#166534",fontWeight:600,marginBottom:8 }}>Receipt extracted</div>
-              <div style={{ display:"flex",flexDirection:"column",gap:6 }}>
-                <div style={{ display:"flex",justifyContent:"space-between",fontSize:13 }}>
-                  <span style={{ color:"#64748b" }}>Vendor</span>
-                  <span style={{ fontWeight:600,color:"#1e293b" }}>{result.vendor||"—"}</span>
+            <div style={{ background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,padding:"14px 16px",marginBottom:10 }}>
+              <div style={{ fontSize:12,color:"#166534",fontWeight:600,marginBottom:8 }}>Receipt extracted — fix anything wrong below</div>
+              <div style={{ display:"flex",flexDirection:"column",gap:8 }}>
+                <div>
+                  <div style={{ fontSize:11,color:"#64748b",marginBottom:3 }}>Vendor</div>
+                  <input value={result.vendor||""} onChange={e=>setResult(r=>({...r,vendor:e.target.value}))}
+                    style={{ width:"100%",boxSizing:"border-box",padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:7,fontSize:13 }}/>
                 </div>
-                <div style={{ display:"flex",justifyContent:"space-between",fontSize:13 }}>
-                  <span style={{ color:"#64748b" }}>Date</span>
-                  <span style={{ fontWeight:600,color:"#1e293b" }}>{result.date||"—"}</span>
+                <div>
+                  <div style={{ fontSize:11,color:"#64748b",marginBottom:3 }}>Date</div>
+                  <input type="date" value={result.date||""} onChange={e=>setResult(r=>({...r,date:e.target.value}))}
+                    style={{ width:"100%",boxSizing:"border-box",padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:7,fontSize:13 }}/>
                 </div>
-                <div style={{ display:"flex",justifyContent:"space-between",fontSize:13 }}>
-                  <span style={{ color:"#64748b" }}>Amount</span>
-                  <span style={{ fontWeight:600,color:"#1e293b" }}>{result.amount ? "$"+result.amount : "—"}</span>
+                <div>
+                  <div style={{ fontSize:11,color:"#64748b",marginBottom:3 }}>Amount ($)</div>
+                  <input type="number" value={result.amount??""} onChange={e=>setResult(r=>({...r,amount:e.target.value?+e.target.value:""}))}
+                    style={{ width:"100%",boxSizing:"border-box",padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:7,fontSize:13 }}/>
                 </div>
               </div>
             </div>
@@ -1091,7 +1099,7 @@ const ManualExpenseModal = ({ agreement, onSave, onClose }) => {
           <Btn variant="ghost" size="sm" onClick={onClose}>Close</Btn>
         </div>
         <div style={{ display:"flex",flexDirection:"column",gap:14 }}>
-          <div title="Coming soon" style={{ display:"flex",alignItems:"center",gap:6,background:"none",border:"1px dashed #e2e8f0",borderRadius:8,padding:"8px 10px",fontSize:12,fontWeight:600,color:"#cbd5e1",cursor:"not-allowed",width:"fit-content" }}>📷 Scan receipt to autofill <span style={{ fontSize:10,fontWeight:700 }}>(coming soon)</span></div>
+          <button onClick={()=>setShowScan(true)} style={{ display:"flex",alignItems:"center",gap:6,background:"none",border:"1px dashed #cbd5e1",borderRadius:8,padding:"8px 10px",fontSize:12,fontWeight:600,color:"#0F6E56",cursor:"pointer",width:"fit-content" }}>📷 Scan receipt to autofill</button>
           {hasReceipt&&<div style={{ fontSize:12,color:"#166534" }}>✓ Receipt scanned — details filled in below, edit anything before saving</div>}
           <Input label="Date" type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))}/>
           <Input label="Vendor / Description" value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} placeholder="e.g. Cash purchase at dental supply store"/>
@@ -1484,7 +1492,7 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
                                 <Btn size="sm" variant="ghost" onClick={()=>setBanks(bk=>bk.map(x=>x.id===b.id?{...x,receipt:null}:x))}>Remove</Btn>
                               </div>
                             ) : (
-                              <Btn size="sm" variant="secondary" disabled title="Coming soon" style={{ opacity:0.5,cursor:"not-allowed" }}>📷 Scan / upload (soon)</Btn>
+                              <Btn size="sm" variant="secondary" onClick={()=>setScanningFor(b.id)}>📷 Scan / upload</Btn>
                             )}
                             {!b.receipt&&b.type==="business"&&b.taxDeductible&&(
                               <div style={{ fontSize:10,color:"#f59e0b",marginTop:4 }}>⚠ No receipt — CRA may ask</div>
@@ -1600,7 +1608,7 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
                                 </div>
                               ) : (
                                 <div>
-                                  <Btn size="sm" disabled title="Coming soon" style={{ opacity:0.5,cursor:"not-allowed" }}>📷 Scan / upload receipt (soon)</Btn>
+                                  <Btn size="sm" onClick={()=>setScanningFor(b.id)}>📷 Scan / upload receipt</Btn>
                                   <div style={{ fontSize:10,color:"#92400e",marginTop:4 }}>Required for CRA audit protection</div>
                                 </div>
                               )}
@@ -2169,7 +2177,7 @@ const SettingsTab = ({ agreement, setAgreement, practices, setPractices, isMobil
 const TOUR_STEPS = [
   { tab:"home", title:"Welcome to DentaTrack 👋", body:"Quick 60-second look around before you dive in — skip anytime, no pressure." },
   { tab:"home", title:"Home", body:"Your financial snapshot: expected pay, expenses, and estimated net take-home for the month. \"Email my P&L\" sends a PDF summary whenever you need one." },
-  { tab:"production", title:"Production", body:"Log each day's production here — this is what your pay percentage gets calculated from. Manual entry works today; day-sheet scanning is coming soon." },
+  { tab:"production", title:"Production", body:"Log each day's production here — this is what your pay percentage gets calculated from. Type it in, or scan a day sheet to autofill." },
   { tab:"transactions", title:"Transactions", body:"Your bank feed lives here. Tap any transaction to tag it as a deposit, expense, or transfer — split it across categories, attach a receipt, or create a rule so future ones tag themselves." },
   { tab:"settings", section:"practices", title:"Settings — Practices", body:"Add every office you work at, each with its own pay percentage and lab-fee rules — this is what your expected pay is built on." },
   { tab:"settings", section:"accounts", title:"Settings — Connected accounts", body:"Connect your real bank here so deposits and expenses import automatically instead of typing everything by hand." },

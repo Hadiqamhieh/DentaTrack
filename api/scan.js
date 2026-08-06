@@ -1,15 +1,21 @@
-// Vercel serverless function. Keeps the Anthropic API key server-side —
-// the browser only ever talks to /api/scan, never to api.anthropic.com directly.
-// Requires an ANTHROPIC_API_KEY environment variable set in the Vercel project.
+// Powers receipt and day-sheet scanning. Uses Google's Gemini API (free
+// tier — no credit card required) instead of a paid API, since this
+// beta doesn't have scanning volume that needs anything more yet.
+//
+// Kept to the exact same request/response shape the frontend already
+// expects ({ imageBase64, mimeType, prompt } -> { text }) so ScanModal and
+// ReceiptScanner didn't need any changes at all.
+
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return res.status(500).json({ error: 'Scanning is not configured on this deployment yet.' });
+    return res.status(500).json({ error: "Scanning is not configured on this deployment yet." });
   }
 
   const { imageBase64, mimeType, prompt } = req.body || {};
@@ -18,33 +24,39 @@ export default async function handler(req, res) {
   }
 
   try {
-    const upstream = await fetch('https://api.anthropic.com/v1/messages', {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+    const resp = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 500,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: mimeType || 'image/jpeg', data: imageBase64 } },
-            { type: 'text', text: prompt },
+        contents: [{
+          parts: [
+            { text: prompt },
+            { inline_data: { mime_type: mimeType || 'image/jpeg', data: imageBase64 } },
           ],
         }],
+        generationConfig: {
+          responseMimeType: 'application/json',
+        },
       }),
     });
 
-    const data = await upstream.json();
-    if (!upstream.ok) {
-      return res.status(upstream.status).json({ error: data?.error?.message || 'Upstream error' });
+    const data = await resp.json();
+
+    if (!resp.ok) {
+      const message = data?.error?.message || 'Could not reach the scanning service.';
+      return res.status(resp.status >= 400 && resp.status < 600 ? resp.status : 500).json({ error: message });
     }
-    const text = (data.content || []).map((c) => c.text || '').join('');
+
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) {
+      const blockReason = data?.promptFeedback?.blockReason;
+      return res.status(500).json({ error: blockReason ? `Image couldn't be processed (${blockReason}).` : 'No result came back — try a clearer photo.' });
+    }
+
+    // Match the shape the frontend already expects from the old provider.
     return res.status(200).json({ text });
   } catch (err) {
-    return res.status(500).json({ error: 'Scan request failed.' });
+    return res.status(500).json({ error: err.message || 'Could not process the image.' });
   }
 }

@@ -2382,7 +2382,8 @@ const Onboarding = ({ onComplete, onTransactionsSynced }) => {
   const TOTAL = 5;
 
   const [profile, setProfile] = useState({ name:"", email:"", province:"ON", licenseNumber:"", school:"", graduatingYear:"", isCorp:false });
-  const [practice, setPractice] = useState({ name:"", pct:35, basis:"collections", deductsLabFees:false, guarantee:0, color:"#0F6E56" });
+  const [practices, setPracticesList] = useState([]); // practices already added
+  const [draft, setDraft] = useState({ name:"", pct:35, basis:"collections", deductsLabFees:false, guarantee:0, color:PRACTICE_COLORS[0] });
   const [bankConnected, setBankConnected] = useState(false);
   const [showPlaid, setShowPlaid] = useState(false);
   const [connectedAccts, setConnectedAccts] = useState([]);
@@ -2395,14 +2396,24 @@ const Onboarding = ({ onComplete, onTransactionsSynced }) => {
 
   const selectedProvince = PROVINCES_FULL.find(p=>p.code===profile.province);
   const canStep2 = profile.name.trim()&&profile.email.trim()&&profile.province;
-  const canStep3 = practice.name.trim();
+  const draftValid = draft.name.trim();
+  const canStep3 = practices.length>0 || draftValid;
+
+  const addDraftPractice = () => {
+    if (!draftValid) return;
+    setPracticesList(list=>[...list, { ...draft }]);
+    setDraft({ name:"", pct:35, basis:"collections", deductsLabFees:false, guarantee:0, color:PRACTICE_COLORS[(practices.length+1)%PRACTICE_COLORS.length] });
+  };
 
   const finish = () => {
     const finalProfile = {
       ...profile,
       school: (profile.school==="Other / International" && profile.schoolOther?.trim()) ? profile.schoolOther.trim() : profile.school,
     };
-    onComplete({ profile: finalProfile, practice:{ ...practice, address:"", city:"", postalCode:"" }, connectedAccts });
+    // Include whatever's currently in the draft form too, so someone with
+    // just one practice doesn't have to remember to hit "Add" before continuing.
+    const finalPractices = draftValid ? [...practices, { ...draft }] : practices;
+    onComplete({ profile: finalProfile, practices: finalPractices.map(p=>({ ...p, address:"", city:"", postalCode:"" })), connectedAccts });
   };
 
 
@@ -2493,37 +2504,61 @@ const Onboarding = ({ onComplete, onTransactionsSynced }) => {
     </OnboardingShell>
   );
 
-  // Step 3 — First practice
+  // Step 3 — Practices (supports adding more than one)
   if(step===3) return (
     <OnboardingShell step={step} total={TOTAL}>
-      <div style={{ fontSize:22,fontWeight:800,color:"#1e293b",marginBottom:4 }}>Your practice</div>
-      <div style={{ fontSize:13,color:"#94a3b8",marginBottom:24 }}>Add the office you work at. You can add more practices later in Settings.</div>
+      <div style={{ fontSize:22,fontWeight:800,color:"#1e293b",marginBottom:4 }}>Your practice{practices.length>1?"s":""}</div>
+      <div style={{ fontSize:13,color:"#94a3b8",marginBottom:20 }}>Add every office you work at — you can always add more later in Settings too.</div>
+
+      {practices.length>0&&(
+        <div style={{ display:"flex",flexDirection:"column",gap:8,marginBottom:20 }}>
+          {practices.map((p,i)=>(
+            <div key={i} style={{ display:"flex",alignItems:"center",gap:10,padding:"10px 14px",border:"1px solid #e2e8f0",borderRadius:10,background:"#f8fafc" }}>
+              <div style={{ width:8,height:8,borderRadius:"50%",background:p.color,flexShrink:0 }} />
+              <div style={{ flex:1,minWidth:0 }}>
+                <div style={{ fontSize:13,fontWeight:600,color:"#1e293b" }}>{p.name}</div>
+                <div style={{ fontSize:11,color:"#94a3b8" }}>{p.pct}% · {p.basis==="collections"?"Collections":p.basis==="production"?"Gross production":"Adjusted production"}</div>
+              </div>
+              <button onClick={()=>setPracticesList(list=>list.filter((_,idx)=>idx!==i))} style={{ background:"none",border:"none",color:"#94a3b8",fontSize:13,cursor:"pointer",padding:4 }}>Remove</button>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div style={{ display:"flex",flexDirection:"column",gap:16 }}>
-        <Input label="Practice name *" value={practice.name} onChange={e=>setPractice(p=>({...p,name:e.target.value}))} placeholder="e.g. Sunshine Dental" />
+        {practices.length>0&&<div style={{ fontSize:12,fontWeight:600,color:"#64748b" }}>{draftValid||practices.length===0 ? "Add another practice" : "Add another practice (optional)"}</div>}
+        <Input label="Practice name *" value={draft.name} onChange={e=>setDraft(p=>({...p,name:e.target.value}))} placeholder="e.g. Sunshine Dental" />
         <div>
           <div style={{ display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:6 }}>
-            <label style={{ fontSize:12,fontWeight:500,color:"#475569" }}>Your pay percentage *</label>
-            <span style={{ fontSize:20,fontWeight:800,color:"#1e293b" }}>{practice.pct}%</span>
+            <label style={{ fontSize:12,fontWeight:500,color:"#475569" }}>Pay percentage *</label>
+            <span style={{ fontSize:20,fontWeight:800,color:"#1e293b" }}>{draft.pct}%</span>
           </div>
-          <input type="range" min={20} max={50} value={practice.pct} onChange={e=>setPractice(p=>({...p,pct:+e.target.value}))} style={{ width:"100%" }} />
+          <input type="range" min={20} max={50} value={draft.pct} onChange={e=>setDraft(p=>({...p,pct:+e.target.value}))} style={{ width:"100%" }} />
           <div style={{ display:"flex",justifyContent:"space-between",fontSize:11,color:"#94a3b8",marginTop:2 }}>
             <span>20%</span><span>50%</span>
           </div>
         </div>
-        <Sel label="Pay basis *" value={practice.basis} onChange={e=>setPractice(p=>({...p,basis:e.target.value}))}>
+        <Sel label="Pay basis *" value={draft.basis} onChange={e=>setDraft(p=>({...p,basis:e.target.value}))}>
           <option value="collections">Collections — what the practice actually received</option>
           <option value="production">Gross production — your full fee schedule</option>
           <option value="adjusted">Adjusted production — after write-offs</option>
         </Sel>
         <label style={{ display:"flex",alignItems:"flex-start",gap:12,cursor:"pointer",background:"#f8fafc",padding:"12px 14px",borderRadius:10,border:"1px solid #e2e8f0" }}>
-          <input type="checkbox" checked={practice.deductsLabFees} onChange={e=>setPractice(p=>({...p,deductsLabFees:e.target.checked}))} style={{ width:20,height:20,marginTop:2,flexShrink:0 }} />
+          <input type="checkbox" checked={draft.deductsLabFees} onChange={e=>setDraft(p=>({...p,deductsLabFees:e.target.checked}))} style={{ width:20,height:20,marginTop:2,flexShrink:0 }} />
           <div>
             <div style={{ fontSize:14,fontWeight:600,color:"#1e293b" }}>Lab fees deducted before my pay %</div>
             <div style={{ fontSize:12,color:"#94a3b8",marginTop:2 }}>e.g. contract says: 40% of (collections − lab fees). Check your agreement.</div>
           </div>
         </label>
-        <Btn size="lg" onClick={()=>setStep(4)} disabled={!canStep3}
-          style={{ width:"100%",justifyContent:"center",marginTop:8,opacity:canStep3?1:0.4 }}>
+
+        {draftValid&&(
+          <button onClick={addDraftPractice} style={{ display:"flex",alignItems:"center",justifyContent:"center",gap:6,background:"none",border:"1px dashed #0F6E56",borderRadius:10,padding:"10px 0",fontSize:13,fontWeight:600,color:"#0F6E56",cursor:"pointer" }}>
+            + Add this practice, then add another
+          </button>
+        )}
+
+        <Btn size="lg" onClick={()=>{ if(draftValid) addDraftPractice(); setStep(4); }} disabled={!canStep3}
+          style={{ width:"100%",justifyContent:"center",marginTop:4,opacity:canStep3?1:0.4 }}>
           Continue →
         </Btn>
         <button onClick={()=>setStep(2)} style={{ background:"none",border:"none",color:"#94a3b8",fontSize:13,cursor:"pointer",textAlign:"center" }}>← Back</button>
@@ -2571,7 +2606,14 @@ const Onboarding = ({ onComplete, onTransactionsSynced }) => {
           You're all set{profile.name?`, ${profile.name.replace("Dr.","").trim().split(" ")[0]}`:""}!
         </div>
         <div style={{ fontSize:14,color:"#64748b",marginBottom:8,lineHeight:1.6 }}>
-          <strong>{practice.name}</strong> is ready — {practice.pct}% of {practice.basis}{practice.deductsLabFees?" · lab fees deducted":""}
+          {(() => {
+            const all = draftValid ? [...practices, draft] : practices;
+            if (all.length === 1) {
+              const p = all[0];
+              return <><strong>{p.name}</strong> is ready — {p.pct}% of {p.basis}{p.deductsLabFees?" · lab fees deducted":""}</>;
+            }
+            return <><strong>{all.length} practices</strong> are set up and ready to go</>;
+          })()}
         </div>
         {bankConnected
           ? <div style={{ fontSize:13,color:"#0F6E56",fontWeight:600,marginBottom:24 }}>✓ Bank connected — your feed will populate shortly</div>
@@ -2765,7 +2807,7 @@ export default function App() {
     });
   };
 
-  const handleOnboardingComplete = ({ profile, practice, connectedAccts }) => {
+  const handleOnboardingComplete = ({ profile, practices: newPractices, connectedAccts }) => {
     setAgreement(a => ({
       ...a,
       name: profile.name,
@@ -2775,7 +2817,7 @@ export default function App() {
       school: profile.school,
       graduatingYear: profile.graduatingYear,
     }));
-    setPractices(p => [...p, { ...practice, id: newId() }]);
+    setPractices(p => [...p, ...(newPractices||[]).map(pr => ({ ...pr, id: newId() }))]);
     if (connectedAccts?.length) setConnectedAccounts(a => [...a, ...connectedAccts]);
   };
 

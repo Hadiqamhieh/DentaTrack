@@ -95,14 +95,14 @@ export async function loadProduction(userId) {
   if (error) throw error;
   return data.map((r) => ({
     id: r.id, date: r.date, production: Number(r.production), labFees: Number(r.lab_fees),
-    source: r.source, practiceId: r.practice_id,
+    source: r.source, practiceId: r.practice_id, receipt: r.receipt, label: r.label,
   }));
 }
 
 export async function syncProduction(userId, production) {
   const rows = production.map((r) => ({
     id: r.id, user_id: userId, date: r.date, production: r.production, lab_fees: r.labFees,
-    source: r.source, practice_id: r.practiceId,
+    source: r.source, practice_id: r.practiceId, receipt: r.receipt || null, label: r.label || null,
   }));
   await replaceAll('production', userId, rows);
 }

@@ -479,13 +479,16 @@ const LogModal = ({ practices, onSave, onClose }) => {
   const [amount, setAmount] = useState("");
   const [labFees, setLabFees] = useState("");
   const [showScan, setShowScan] = useState(false);
+  const [label, setLabel] = useState("");       // defaults to date, editable
+  const [labelTouched, setLabelTouched] = useState(false); // has the user typed their own name?
+  const [receiptImg, setReceiptImg] = useState(null);
 
   const practice = practices.find(p=>p.id===practiceId);
   const tracksLab = !!practice?.deductsLabFees;
 
   const save = () => {
     if(!amount||!practiceId) return;
-    onSave({ date, practiceId, production:+amount, labFees:+(labFees||0), source:"manual" });
+    onSave({ date, practiceId, production:+amount, labFees:+(labFees||0), source: receiptImg?"daysheet":"manual", label: label||date, receipt: receiptImg });
     onClose();
   };
 
@@ -494,10 +497,11 @@ const LogModal = ({ practices, onSave, onClose }) => {
       {showScan&&<ScanModal title="Scan Day Sheet"
         prompt="Read a dental day sheet / production report. Extract: date (YYYY-MM-DD), total_production (number), total_collection (number if visible), total_lab_fees (number if visible)."
         onClose={()=>setShowScan(false)}
-        onResult={r=>{
-          if(r.date) setDate(r.date);
+        onResult={(r, img)=>{
+          if(r.date){ setDate(r.date); if(!labelTouched) setLabel(r.date); }
           if(r.total_production!=null) setAmount(String(r.total_production));
           if(r.total_lab_fees!=null) setLabFees(String(r.total_lab_fees));
+          setReceiptImg(img || null);
           setMode("manual");
         }} />}
       <Card className="dt-modal-card" style={{ width:420,padding:28,overflowY:"auto",maxHeight:"90vh" }}>
@@ -515,7 +519,9 @@ const LogModal = ({ practices, onSave, onClose }) => {
           <Sel label="Practice" value={practiceId} onChange={e=>setPracticeId(e.target.value)}>
             {practices.map(pr=><option key={pr.id} value={pr.id}>{pr.name}</option>)}
           </Sel>
-          <Input label="Date" type="date" value={date} onChange={e=>setDate(e.target.value)} />
+          <Input label="Date" type="date" value={date} onChange={e=>{ setDate(e.target.value); if(!labelTouched) setLabel(e.target.value); }} />
+          <Input label="Entry name" value={label||date} onChange={e=>{ setLabel(e.target.value); setLabelTouched(true); }} placeholder="Defaults to the date — edit if you'd like to name it" />
+          {receiptImg&&<div style={{ fontSize:12,color:"#166534" }}>📎 Day sheet photo attached — you'll be able to view it later</div>}
 
           {mode==="manual" ? (
             <>
@@ -736,9 +742,11 @@ const EmailReportModal = ({ agreement, period, expectedPay, totalExp, net, pract
 // ── Home Tab ──────────────────────────────────────────────────────────────────
 const EditProductionModal = ({ entry, practices, onSave, onClose }) => {
   const [form, setForm] = useState({ ...entry });
+  const [viewingReceipt, setViewingReceipt] = useState(false);
   const pr = practices.find(p=>p.id===form.practiceId);
   return (
     <div className="dt-modal-overlay" style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000 }}>
+      {viewingReceipt&&<ReceiptViewer receipt={form.receipt} onClose={()=>setViewingReceipt(false)}/>}
       <Card className="dt-modal-card" style={{ width:420,padding:28,overflowY:"auto",maxHeight:"90vh" }}>
         <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20 }}>
           <div style={{ fontSize:17,fontWeight:700,color:"#1e293b" }}>Edit production entry</div>
@@ -749,9 +757,16 @@ const EditProductionModal = ({ entry, practices, onSave, onClose }) => {
             {practices.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
           </Sel>
           <Input label="Date" type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} />
+          <Input label="Entry name" value={form.label||form.date} onChange={e=>setForm(f=>({...f,label:e.target.value}))} placeholder="Defaults to the date — edit if you'd like to name it" />
           <Input label="Total production ($)" type="number" value={form.production} onChange={e=>setForm(f=>({...f,production:+e.target.value}))} />
           {pr?.deductsLabFees&&(
             <Input label="Lab fees ($)" type="number" value={form.labFees||0} onChange={e=>setForm(f=>({...f,labFees:+e.target.value}))} />
+          )}
+          {form.receipt&&(
+            <div>
+              <div style={{ fontSize:11,fontWeight:600,color:"#64748b",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em" }}>Attachment</div>
+              <Btn size="sm" variant="secondary" onClick={()=>setViewingReceipt(true)}>📎 View attached day sheet</Btn>
+            </div>
           )}
           <div style={{ display:"flex",gap:10,justifyContent:"flex-end",marginTop:6 }}>
             <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
@@ -915,6 +930,7 @@ const HomeTab = ({ production, expenses, banks, agreement, matches, practices, c
 const ProductionTab = ({ production, setProduction, practices }) => {
   const [showLog, setShowLog]     = useState(false);
   const [editEntry, setEditEntry] = useState(null);
+  const [viewingReceipt, setViewingReceipt] = useState(null);
 
   return (
     <div style={{ display:"flex",flexDirection:"column",gap:20 }}>
@@ -927,6 +943,7 @@ const ProductionTab = ({ production, setProduction, practices }) => {
           onClose={()=>setEditEntry(null)}
         />
       )}
+      {viewingReceipt&&<ReceiptViewer receipt={viewingReceipt} onClose={()=>setViewingReceipt(null)}/>}
 
       {/* Log action card */}
       <Card style={{ background:"linear-gradient(135deg,#0F6E56,#0a4d3c)",border:"none",padding:"24px 28px" }}>
@@ -953,12 +970,14 @@ const ProductionTab = ({ production, setProduction, practices }) => {
         ) : (
           [...production].sort((a,b)=>b.date.localeCompare(a.date)).map((entry,i)=>{
             const pr = practices.find(p=>p.id===entry.practiceId);
+            const showsDateSeparately = entry.label && entry.label !== entry.date;
             return (
               <div key={entry.id} style={{ display:"flex",alignItems:"center",gap:12,padding:"12px 20px",borderBottom:"1px solid #f8fafc",background:i%2===0?"#fff":"#fafafa" }}>
                 <div style={{ width:8,height:8,borderRadius:"50%",background:pr?.color||"#e2e8f0",flexShrink:0 }} />
                 <div style={{ flex:1,minWidth:0 }}>
                   <div style={{ display:"flex",alignItems:"baseline",gap:8,flexWrap:"wrap" }}>
-                    <span style={{ fontSize:13,fontWeight:600,color:"#1e293b" }}>{entry.date}</span>
+                    <span style={{ fontSize:13,fontWeight:600,color:"#1e293b" }}>{entry.label||entry.date}</span>
+                    {showsDateSeparately&&<span style={{ fontSize:11,color:"#94a3b8" }}>{entry.date}</span>}
                     <span style={{ fontSize:12,color:"#64748b" }}>{pr?.name||"—"}</span>
                     {entry.labFees>0&&<span style={{ fontSize:11,color:"#92400e",background:"#fef3c7",padding:"1px 6px",borderRadius:99 }}>Lab: {fmt(entry.labFees)}</span>}
                     <Badge label={entry.source==="daysheet"?"📋 Day sheet":"Manual"} color={entry.source==="daysheet"?"teal":"gray"} />
@@ -966,6 +985,7 @@ const ProductionTab = ({ production, setProduction, practices }) => {
                 </div>
                 <div style={{ fontSize:16,fontWeight:700,color:"#1e293b",flexShrink:0 }}>{fmt(entry.production)}</div>
                 <div style={{ display:"flex",gap:6,flexShrink:0 }}>
+                  {entry.receipt&&<Btn variant="secondary" size="sm" onClick={()=>setViewingReceipt(entry.receipt)}>📎 View</Btn>}
                   <Btn variant="ghost" size="sm" onClick={()=>setEditEntry(entry)}>Edit</Btn>
                   <Btn variant="danger" size="sm" onClick={()=>setProduction(p=>p.filter(x=>x.id!==entry.id))}>Remove</Btn>
                 </div>

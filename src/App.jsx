@@ -2082,18 +2082,24 @@ const SettingsTab = ({ agreement, setAgreement, practices, setPractices, isMobil
         ) : (
           <div style={{ display:"flex",flexDirection:"column",gap:10 }}>
             {connectedAccounts.map(acc=>(
-              <div key={acc.id} style={{ display:"flex",alignItems:"center",gap:12,padding:"12px 16px",border:"1px solid #e2e8f0",borderRadius:10,background:"#fafafa" }}>
-                <div style={{ width:36,height:36,background:acc.type==="credit"?"#ede9fe":"#E1F5EE",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0 }}>
-                  {acc.type==="credit"?"💳":"🏦"}
+              <div key={acc.id} style={{ display:"flex",flexDirection:"column",gap:10,padding:"12px 14px",border:"1px solid #e2e8f0",borderRadius:10,background:"#fafafa" }}>
+                <div style={{ display:"flex",alignItems:"center",gap:10,minWidth:0 }}>
+                  <div style={{ width:32,height:32,background:acc.type==="credit"?"#ede9fe":"#E1F5EE",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0 }}>
+                    {acc.type==="credit"?"💳":"🏦"}
+                  </div>
+                  <div style={{ flex:1,minWidth:0 }}>
+                    <div style={{ fontWeight:600,color:"#1e293b",fontSize:13 }}>{acc.name} ···{acc.mask}</div>
+                    <div style={{ fontSize:11,color:"#94a3b8",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis" }}>{acc.institution}</div>
+                  </div>
                 </div>
-                <div style={{ flex:1,minWidth:0 }}>
-                  <div style={{ fontWeight:600,color:"#1e293b",fontSize:13 }}>{acc.name} ···{acc.mask}</div>
-                  <div style={{ fontSize:11,color:"#94a3b8",marginTop:2 }}>{acc.institution} · Last sync: {acc.lastSync}</div>
-                </div>
-                <div style={{ display:"flex",alignItems:"center",gap:6,flexShrink:0 }}>
-                  <Badge label={acc.label} color={acc.label==="Corp bank"?"teal":acc.label==="Corp credit card"?"purple":"gray"} />
-                  <Badge label="✓ Live" color="green" />
-                  <Btn variant="danger" size="sm" onClick={()=>removeAccount(acc)}>Disconnect</Btn>
+                <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",gap:8 }}>
+                  <div style={{ display:"flex",alignItems:"center",gap:6,flexWrap:"wrap" }}>
+                    <Badge label={acc.label} color={acc.label==="Corp bank"?"teal":acc.label==="Corp credit card"?"purple":"gray"} />
+                    <Badge label="Live" color="green" />
+                  </div>
+                  <button onClick={()=>removeAccount(acc)} style={{ background:"none",border:"none",color:"#dc2626",fontSize:12,fontWeight:600,cursor:"pointer",padding:"4px 2px",flexShrink:0 }}>
+                    Disconnect
+                  </button>
                 </div>
               </div>
             ))}

@@ -404,7 +404,7 @@ const ScanModal = ({ title, prompt, onClose, onResult }) => {
           </div>
           <div style={{ display:"flex",gap:8 }}>
             <Btn variant="secondary" onClick={()=>{setFile(null);setPreview(null);setResult(null);}}>Rescan</Btn>
-            <Btn onClick={()=>{ onResult(result); onClose(); }}>Import</Btn>
+            <Btn onClick={()=>{ onResult(result, { imageBase64: preview.split(",")[1], mimeType: file.type||"image/jpeg" }); onClose(); }}>Import</Btn>
           </div>
         </div>)}
       </Card>
@@ -981,6 +981,40 @@ const ProductionTab = ({ production, setProduction, practices }) => {
 // ── Transactions Tab (expenses + bank feed + reconciliation merged) ───────────
 // ── Receipt attachment scanner ─────────────────────────────────────────────────
 // Scans a receipt and attaches it to an existing bank transaction
+// Shows a previously-attached receipt. Handles the case where an older
+// entry only has a boolean "receipt: true" flag with no actual image saved
+// (from before receipts stored the real photo) gracefully instead of breaking.
+const ReceiptViewer = ({ receipt, onClose }) => {
+  const hasImage = receipt && typeof receipt === "object" && receipt.imageBase64;
+  return (
+    <div className="dt-modal-overlay" style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1300 }}>
+      <Card style={{ width:420,maxHeight:"90vh",overflowY:"auto",padding:24 }}>
+        <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16 }}>
+          <div style={{ fontSize:16,fontWeight:700,color:"#1e293b" }}>Attached receipt</div>
+          <Btn variant="ghost" size="sm" onClick={onClose}>Close</Btn>
+        </div>
+        {hasImage ? (
+          <>
+            <img src={`data:${receipt.mimeType||"image/jpeg"};base64,${receipt.imageBase64}`} alt="Receipt"
+              style={{ width:"100%",borderRadius:10,border:"1px solid #e2e8f0",marginBottom:14 }} />
+            {(receipt.vendor||receipt.date||receipt.amount)&&(
+              <div style={{ display:"flex",flexDirection:"column",gap:4,fontSize:13,color:"#475569" }}>
+                {receipt.vendor&&<div><strong>Vendor:</strong> {receipt.vendor}</div>}
+                {receipt.date&&<div><strong>Date:</strong> {receipt.date}</div>}
+                {receipt.amount!=null&&<div><strong>Amount:</strong> ${receipt.amount}</div>}
+              </div>
+            )}
+          </>
+        ) : (
+          <div style={{ textAlign:"center",padding:"24px 12px",color:"#94a3b8",fontSize:13 }}>
+            This was marked as having a receipt, but no image was saved for it — that happened before receipt photos were kept on file. New receipts you scan or attach from here on will be viewable like this.
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+};
+
 const ReceiptScanner = ({ bankId, onAttach, onClose }) => {
   const fileRef = useRef();
   const [scanning, setScanning] = useState(false);
@@ -1079,7 +1113,7 @@ const ManualExpenseModal = ({ agreement, onSave, onClose }) => {
     date: new Date().toISOString().slice(0,10),
     description:"", category:"Supplies", notes:"",
   });
-  const [hasReceipt, setHasReceipt] = useState(false);
+  const [receiptImg, setReceiptImg] = useState(null); // {imageBase64, mimeType} once scanned
   const [showScan, setShowScan] = useState(false);
   const cat = getCategory(form.category);
 
@@ -1088,14 +1122,14 @@ const ManualExpenseModal = ({ agreement, onSave, onClose }) => {
       {showScan&&<ScanModal title="Scan Receipt"
         prompt='Extract from this receipt: vendor name, date (YYYY-MM-DD), total amount (number). Respond as JSON with keys vendor, date, amount.'
         onClose={()=>setShowScan(false)}
-        onResult={r=>{
+        onResult={(r, img)=>{
           setForm(f=>({
             ...f,
             description: r.vendor || f.description,
             date: r.date || f.date,
             amount: r.amount!=null ? +r.amount : f.amount,
           }));
-          setHasReceipt(true);
+          setReceiptImg(img || null);
         }} />}
       <Card className="dt-modal-card" style={{ width:460,padding:28,overflowY:"auto",maxHeight:"90vh" }}>
         <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20 }}>
@@ -1107,7 +1141,7 @@ const ManualExpenseModal = ({ agreement, onSave, onClose }) => {
         </div>
         <div style={{ display:"flex",flexDirection:"column",gap:14 }}>
           <button onClick={()=>setShowScan(true)} style={{ display:"flex",alignItems:"center",gap:6,background:"none",border:"1px dashed #cbd5e1",borderRadius:8,padding:"8px 10px",fontSize:12,fontWeight:600,color:"#0F6E56",cursor:"pointer",width:"fit-content" }}>📷 Scan receipt to autofill</button>
-          {hasReceipt&&<div style={{ fontSize:12,color:"#166534" }}>✓ Receipt scanned — details filled in below, edit anything before saving</div>}
+          {receiptImg&&<div style={{ fontSize:12,color:"#166534" }}>✓ Receipt scanned — details filled in below, edit anything before saving</div>}
           <Input label="Date" type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))}/>
           <Input label="Vendor / Description" value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} placeholder="e.g. Cash purchase at dental supply store"/>
           <Input label="Amount ($)" type="number" value={form.amount||""} onChange={e=>setForm(f=>({...f,amount:+e.target.value}))} placeholder="0"/>
@@ -1140,7 +1174,7 @@ const ManualExpenseModal = ({ agreement, onSave, onClose }) => {
                 corpExpense: agreement.isCorp && cat.deductible,
                 notes: form.notes,
                 manual: true,
-                receipt: hasReceipt,
+                receipt: receiptImg ? { ...receiptImg, vendor:form.description, date:form.date, amount:form.amount } : null,
                 reviewed: true,
                 userTagged: true,
               });
@@ -1157,6 +1191,7 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
   const [pendingRule, setPendingRule]     = useState(null);
   const [expandedId, setExpandedId]       = useState(null);
   const [scanningFor, setScanningFor]     = useState(null); // bankId to attach receipt to
+  const [viewingReceipt, setViewingReceipt] = useState(null); // receipt object currently being viewed
   const [showManual, setShowManual]       = useState(false);
   const [sub, setSub]                     = useState("all");
   const [splittingId, setSplittingId]     = useState(null); // bankId currently being split-edited
@@ -1196,6 +1231,7 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
       {scanningFor&&<ReceiptScanner bankId={scanningFor}
         onAttach={r=>{ setBanks(bk=>bk.map(x=>x.id===scanningFor?{...x,receipt:r}:x)); setScanningFor(null); }}
         onClose={()=>setScanningFor(null)}/>}
+      {viewingReceipt&&<ReceiptViewer receipt={viewingReceipt} onClose={()=>setViewingReceipt(null)}/>}
       {showManual&&<ManualExpenseModal agreement={agreement}
         onSave={tx=>{ setBanks(bk=>[...bk,tx]); setShowManual(false); }}
         onClose={()=>setShowManual(false)}/>}
@@ -1494,8 +1530,9 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
                           <div style={{ minWidth:160 }}>
                             <div style={{ fontSize:11,fontWeight:600,color:"#64748b",marginBottom:6,textTransform:"uppercase",letterSpacing:"0.05em" }}>Receipt</div>
                             {b.receipt ? (
-                              <div style={{ display:"flex",alignItems:"center",gap:6 }}>
+                              <div style={{ display:"flex",alignItems:"center",gap:6,flexWrap:"wrap" }}>
                                 <span style={{ fontSize:12,color:"#166534",fontWeight:600 }}>✓ On file</span>
+                                <Btn size="sm" variant="secondary" onClick={()=>setViewingReceipt(b.receipt)}>📎 View</Btn>
                                 <Btn size="sm" variant="ghost" onClick={()=>setBanks(bk=>bk.map(x=>x.id===b.id?{...x,receipt:null}:x))}>Remove</Btn>
                               </div>
                             ) : (
@@ -1609,8 +1646,9 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
                             </div>
                             <div>
                               {b.receipt ? (
-                                <div style={{ display:"flex",alignItems:"center",gap:8 }}>
+                                <div style={{ display:"flex",alignItems:"center",gap:8,flexWrap:"wrap" }}>
                                   <span style={{ fontSize:13,color:"#166534",fontWeight:600 }}>✓ Receipt on file</span>
+                                  <Btn size="sm" variant="secondary" onClick={()=>setViewingReceipt(b.receipt)}>📎 View</Btn>
                                   <Btn size="sm" variant="ghost" onClick={()=>setBanks(bk=>bk.map(x=>x.id===b.id?{...x,receipt:null}:x))}>Remove</Btn>
                                 </div>
                               ) : (

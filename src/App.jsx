@@ -330,14 +330,15 @@ const ScanModal = ({ title, prompt, onClose, onResult }) => {
   const [log, setLog] = useState([]);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const [diagnostic, setDiagnostic] = useState(null);
   const ref = useRef();
   const loadFile = (f) => {
-    setFile(f); setResult(null); setLog([]); setError(null);
+    setFile(f); setResult(null); setLog([]); setError(null); setDiagnostic(null);
     const r = new FileReader(); r.onload = e => setPreview(e.target.result); r.readAsDataURL(f);
   };
   const scan = async () => {
     if (!file||!preview) return;
-    setScanning(true); setLog([]); setError(null); setResult(null);
+    setScanning(true); setLog([]); setError(null); setDiagnostic(null); setResult(null);
     const steps = ["Reading image...","Identifying fields...","Extracting data...","Formatting results..."];
     let i=0; const iv = setInterval(()=>{ if(i<steps.length) setLog(l=>[...l,steps[i++]]); },600);
     try {
@@ -348,6 +349,7 @@ const ScanModal = ({ title, prompt, onClose, onResult }) => {
       const data = await res.json();
       if(!res.ok) throw new Error(data.error||"Scan failed");
       setLog(steps); setResult(JSON.parse((data.text||"").replace(/```json|```/g,"").trim()));
+      if (data.diagnostic) setDiagnostic(data.diagnostic);
     } catch (e) { clearInterval(iv); setError(e.message || "Could not read this image. Try a clearer photo."); }
     setScanning(false);
   };
@@ -383,6 +385,11 @@ const ScanModal = ({ title, prompt, onClose, onResult }) => {
         {result&&(<div style={{ marginTop:16 }}>
           <div style={{ fontSize:13,fontWeight:600,color:"#475569",marginBottom:4 }}>Review before importing</div>
           <div style={{ fontSize:11,color:"#94a3b8",marginBottom:10 }}>Scans aren't perfect — fix anything wrong or fill in anything it missed.</div>
+          {diagnostic&&(
+            <div style={{ background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 12px",fontSize:12,color:"#991b1b",marginBottom:12 }}>
+              ⚠ {diagnostic}
+            </div>
+          )}
           <div style={{ display:"flex",flexDirection:"column",gap:8,marginBottom:14 }}>
             {Object.entries(result).map(([k,v])=>(
               <div key={k}>

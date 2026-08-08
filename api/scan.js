@@ -8,7 +8,7 @@
 
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest';
 
-async function callGemini(apiKey, { imageBase64, mimeType, prompt }) {
+async function callGemini(apiKey, { imageBase64, mimeType, prompt }, label) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
   const resp = await fetch(url, {
     method: 'POST',
@@ -22,28 +22,39 @@ async function callGemini(apiKey, { imageBase64, mimeType, prompt }) {
       }],
       generationConfig: {
         responseMimeType: 'application/json',
-        // Zero temperature — this is a data-extraction task, not a creative
-        // one, so we want the same receipt to read the same way every time
-        // rather than the model taking a slightly different guess each call.
         temperature: 0,
       },
     }),
   });
   const data = await resp.json();
+
+  // Log everything to Vercel's function logs regardless of outcome — this is
+  // the actual ground truth we've been missing, not another guess.
+  console.log(`[scan:${label}] status=${resp.status} finishReason=${data?.candidates?.[0]?.finishReason} blockReason=${data?.promptFeedback?.blockReason} safety=${JSON.stringify(data?.candidates?.[0]?.safetyRatings || data?.promptFeedback?.safetyRatings || [])}`);
+
   if (!resp.ok) {
-    const message = data?.error?.message || 'Could not reach the scanning service.';
+    const message = resp.status === 429
+      ? "Scanning is briefly at its free-tier limit — wait about a minute and try again."
+      : (data?.error?.message || 'Could not reach the scanning service.');
     const err = new Error(message);
     err.status = resp.status >= 400 && resp.status < 600 ? resp.status : 500;
     throw err;
   }
+
+  const finishReason = data?.candidates?.[0]?.finishReason;
   const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+
   if (!text) {
     const blockReason = data?.promptFeedback?.blockReason;
-    const err = new Error(blockReason ? `Image couldn't be processed (${blockReason}).` : 'No result came back — try a clearer photo.');
+    const err = new Error(
+      blockReason ? `Image couldn't be processed (blocked: ${blockReason}).`
+      : finishReason ? `No result came back (reason: ${finishReason}).`
+      : 'No result came back — try a clearer photo.'
+    );
     err.status = 500;
     throw err;
   }
-  return text;
+  return { text, finishReason };
 }
 
 // A result where most fields came back null/blank is almost always the
@@ -79,13 +90,23 @@ export default async function handler(req, res) {
   }
 
   try {
-    let text = await callGemini(apiKey, { imageBase64, mimeType, prompt });
-    let attempts = 1;
-    // Try up to 3 times total — each retry is silent to the person using it.
-    while (looksEmpty(text) && attempts < 3) {
-      text = await callGemini(apiKey, { imageBase64, mimeType, prompt });
-      attempts++;
+    let { text, finishReason } = await callGemini(apiKey, { imageBase64, mimeType, prompt }, 'attempt-1');
+
+    if (looksEmpty(text)) {
+      console.log(`[scan] attempt-1 looked empty (finishReason=${finishReason}), retrying`);
+      const retry = await callGemini(apiKey, { imageBase64, mimeType, prompt }, 'attempt-2');
+      // If the retry is still empty, surface exactly why instead of silently
+      // returning a blank result the person can't do anything about.
+      if (looksEmpty(retry.text)) {
+        console.log(`[scan] attempt-2 also looked empty (finishReason=${retry.finishReason}). Raw: ${retry.text.slice(0,300)}`);
+        return res.status(200).json({
+          text: retry.text,
+          diagnostic: `Both attempts came back mostly blank (finish reason: ${retry.finishReason || 'unknown'}). This has been logged — send this message if it keeps happening.`,
+        });
+      }
+      text = retry.text;
     }
+
     // Match the shape the frontend already expects from the old provider.
     return res.status(200).json({ text });
   } catch (err) {

@@ -972,22 +972,22 @@ const ProductionTab = ({ production, setProduction, practices }) => {
             const pr = practices.find(p=>p.id===entry.practiceId);
             const showsDateSeparately = entry.label && entry.label !== entry.date;
             return (
-              <div key={entry.id} style={{ display:"flex",alignItems:"center",gap:12,padding:"12px 20px",borderBottom:"1px solid #f8fafc",background:i%2===0?"#fff":"#fafafa" }}>
-                <div style={{ width:8,height:8,borderRadius:"50%",background:pr?.color||"#e2e8f0",flexShrink:0 }} />
-                <div style={{ flex:1,minWidth:0 }}>
-                  <div style={{ display:"flex",alignItems:"baseline",gap:8,flexWrap:"wrap" }}>
-                    <span style={{ fontSize:13,fontWeight:600,color:"#1e293b" }}>{entry.label||entry.date}</span>
-                    {showsDateSeparately&&<span style={{ fontSize:11,color:"#94a3b8" }}>{entry.date}</span>}
-                    <span style={{ fontSize:12,color:"#64748b" }}>{pr?.name||"—"}</span>
-                    {entry.labFees>0&&<span style={{ fontSize:11,color:"#92400e",background:"#fef3c7",padding:"1px 6px",borderRadius:99 }}>Lab: {fmt(entry.labFees)}</span>}
-                    <Badge label={entry.source==="daysheet"?"📋 Day sheet":"Manual"} color={entry.source==="daysheet"?"teal":"gray"} />
-                  </div>
+              <div key={entry.id} style={{ display:"flex",flexDirection:"column",gap:8,padding:"12px 20px",borderBottom:"1px solid #f8fafc",background:i%2===0?"#fff":"#fafafa" }}>
+                <div style={{ display:"flex",alignItems:"center",gap:8,flexWrap:"wrap" }}>
+                  <div style={{ width:8,height:8,borderRadius:"50%",background:pr?.color||"#e2e8f0",flexShrink:0 }} />
+                  <span style={{ fontSize:13,fontWeight:600,color:"#1e293b",whiteSpace:"nowrap" }}>{entry.label||entry.date}</span>
+                  {showsDateSeparately&&<span style={{ fontSize:11,color:"#94a3b8",whiteSpace:"nowrap" }}>{entry.date}</span>}
+                  <span style={{ fontSize:12,color:"#64748b",whiteSpace:"nowrap" }}>{pr?.name||"—"}</span>
+                  {entry.labFees>0&&<span style={{ fontSize:11,color:"#92400e",background:"#fef3c7",padding:"1px 6px",borderRadius:99,whiteSpace:"nowrap" }}>Lab: {fmt(entry.labFees)}</span>}
+                  <Badge label={entry.source==="daysheet"?"📋 Day sheet":"Manual"} color={entry.source==="daysheet"?"teal":"gray"} />
                 </div>
-                <div style={{ fontSize:16,fontWeight:700,color:"#1e293b",flexShrink:0 }}>{fmt(entry.production)}</div>
-                <div style={{ display:"flex",gap:6,flexShrink:0 }}>
-                  {entry.receipt&&<Btn variant="secondary" size="sm" onClick={()=>setViewingReceipt(entry.receipt)}>📎 View</Btn>}
-                  <Btn variant="ghost" size="sm" onClick={()=>setEditEntry(entry)}>Edit</Btn>
-                  <Btn variant="danger" size="sm" onClick={()=>setProduction(p=>p.filter(x=>x.id!==entry.id))}>Remove</Btn>
+                <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap" }}>
+                  <div style={{ fontSize:16,fontWeight:700,color:"#1e293b",whiteSpace:"nowrap" }}>{fmt(entry.production)}</div>
+                  <div style={{ display:"flex",gap:6,flexShrink:0,flexWrap:"wrap" }}>
+                    {entry.receipt&&<Btn variant="secondary" size="sm" onClick={()=>setViewingReceipt(entry.receipt)}>📎 View</Btn>}
+                    <Btn variant="ghost" size="sm" onClick={()=>setEditEntry(entry)}>Edit</Btn>
+                    <Btn variant="danger" size="sm" onClick={()=>setProduction(p=>p.filter(x=>x.id!==entry.id))}>Remove</Btn>
+                  </div>
                 </div>
               </div>
             );
@@ -1390,7 +1390,7 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
                         {duplicateIds?.has(b.id)&&<span style={{ fontSize:10,color:"#991b1b",fontWeight:600,background:"#fef2f2",padding:"1px 6px",borderRadius:99 }}>⚠ Possible duplicate</span>}
                       </div>
                       <div style={{ fontSize:11,color:"#94a3b8",marginTop:2,display:"flex",gap:10,flexWrap:"wrap" }}>
-                        <span>{b.date}</span>
+                        <span style={{ whiteSpace:"nowrap" }}>{b.date}</span>
                         {pr&&<PracticeDot color={pr.color} name={pr.name}/>}
                         {b.type==="collection"&&<Badge label="💰 Collection" color="green"/>}
                         {b.type==="business"&&<Badge label={b.splits?.length ? `Split (${b.splits.length})` : (b.category||"Business")} color="teal"/>}
@@ -1642,7 +1642,7 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
                         <div style={{ flex:1,minWidth:0 }}>
                           <div style={{ fontSize:13,fontWeight:500,color:"#1e293b" }}>{cleanMerchantName(b.description)}</div>
                           <div style={{ fontSize:11,color:"#94a3b8",marginTop:2,display:"flex",gap:8,flexWrap:"wrap" }}>
-                            <span>{b.date}</span>
+                            <span style={{ whiteSpace:"nowrap" }}>{b.date}</span>
                             <Badge label={b.splits?.length ? `Split (${b.splits.length})` : (b.category||"Business")} color="teal"/>
                             {(b.deductibleFraction??1)<1&&!b.splits?.length&&<Badge label="50% rule" color="amber"/>}
                             {b.manual&&<Badge label="Manual" color="gray"/>}

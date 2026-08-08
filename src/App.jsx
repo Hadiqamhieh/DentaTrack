@@ -49,6 +49,12 @@ const GlobalStyles = () => (
       .dt-card-table td[data-label]::before { content: attr(data-label); display: block; font-size: 10px; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 2px; }
       .dt-modal-overlay { align-items: stretch !important; justify-content: stretch !important; padding: 0 !important; }
       .dt-modal-card { width: 100% !important; max-width: 100% !important; height: 100%; max-height: 100% !important; border-radius: 0 !important; padding: 20px !important; }
+      /* iOS Safari auto-zooms in on any input/select/textarea smaller than
+         16px the moment it's focused, then leaves you zoomed in until you
+         manually pinch back out. Forcing every field to 16px here removes
+         the trigger entirely, instead of disabling zoom app-wide (which
+         would also block people who actually want to zoom for readability). */
+      input, select, textarea { font-size: 16px !important; }
     }
   `}</style>
 );

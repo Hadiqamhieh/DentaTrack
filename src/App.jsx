@@ -1341,7 +1341,7 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
   const bizCount   = filteredBanks.filter(b=>deductibleAmount(b)>0).length;
   const deposits   = filteredBanks.filter(b=>b.type==="collection").reduce((s,b)=>s+b.amount,0);
   const missingReceiptCount = filteredBanks.filter(b=>deductibleAmount(b)>0&&!b.receipt).length;
-  const duplicateCount = filteredBanks.filter(b=>duplicateIds?.has(b.id)).length;
+  const duplicateCount = filteredBanks.filter(b=>duplicateIds?.has(b.id)&&!b.reviewed).length;
 
   return (
     <div style={{ display:"flex",flexDirection:"column",gap:20 }}>
@@ -1508,7 +1508,7 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
                       <div style={{ fontSize:13,fontWeight:500,color:"#1e293b",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap" }}>
                         {cleanMerchantName(b.description)}
                         {b.autoTagged&&!b.userTagged&&<span style={{ fontSize:10,color:"#3b82f6",fontWeight:600,background:"#eff6ff",padding:"1px 6px",borderRadius:99 }}>✨ Auto-tagged</span>}
-                        {duplicateIds?.has(b.id)&&<span style={{ fontSize:10,color:"#991b1b",fontWeight:600,background:"#fef2f2",padding:"1px 6px",borderRadius:99 }}>⚠ Possible duplicate</span>}
+                        {duplicateIds?.has(b.id)&&!b.reviewed&&<span style={{ fontSize:10,color:"#991b1b",fontWeight:600,background:"#fef2f2",padding:"1px 6px",borderRadius:99 }}>⚠ Possible duplicate</span>}
                       </div>
                       <div style={{ fontSize:11,color:"#94a3b8",marginTop:2,display:"flex",gap:10,flexWrap:"wrap" }}>
                         <span style={{ whiteSpace:"nowrap" }}>{b.date}</span>

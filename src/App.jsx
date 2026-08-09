@@ -855,9 +855,17 @@ const EditProductionModal = ({ entry, practices, onSave, onClose }) => {
   );
 };
 
-const HomeTab = ({ production, expenses, banks, agreement, matches, practices, collectionsSummary }) => {
+const HomeTab = ({ production, expenses, banks, agreement, matches, practices, collectionsSummary, connectedAccounts, setConnectedAccounts, onTransactionsSynced }) => {
   const [showEmail, setShowEmail] = useState(false);
   const [showTax, setShowTax]     = useState(false);
+  const [showPlaid, setShowPlaid] = useState(false);
+  const [bankPromptDismissed, setBankPromptDismissed] = useState(() => {
+    try { return localStorage.getItem("dt_bank_prompt_dismissed") === "1"; } catch { return false; }
+  });
+  const dismissBankPrompt = () => {
+    setBankPromptDismissed(true);
+    try { localStorage.setItem("dt_bank_prompt_dismissed", "1"); } catch {}
+  };
 
   const totalProd   = production.reduce((s,r)=>s+r.production,0);
   const totalExp    = banks.reduce((s,b)=>s+deductibleAmount(b),0);
@@ -903,6 +911,22 @@ const HomeTab = ({ production, expenses, banks, agreement, matches, practices, c
     <div style={{ display:"flex",flexDirection:"column",gap:20 }}>
       {showEmail&&<EmailReportModal agreement={agreement} period={reportPeriod} expectedPay={expectedPay} totalExp={totalExp} net={net} practiceBreakdown={practiceBreakdown} expenseByCategory={expenseByCategory} onClose={()=>setShowEmail(false)} />}
       {showTax&&<TaxPlanningModal defaultSalary={agreement.salary?agreement.salary*12:90000} onClose={()=>setShowTax(false)} />}
+      {showPlaid&&<PlaidModal onConnect={accs=>setConnectedAccounts(a=>[...a,...accs.filter(na=>!a.find(x=>x.id===na.id))])} onTransactionsSynced={onTransactionsSynced} onClose={()=>setShowPlaid(false)} />}
+
+      {/* Connect-your-bank nudge — shown after onboarding, once there's
+          actually something on screen to point at, instead of asking for
+          bank credentials before anyone's seen the app do anything. */}
+      {!connectedAccounts?.length && !bankPromptDismissed && (
+        <div style={{ background:"linear-gradient(135deg,#0F6E56,#0a4d3c)",border:"none",borderRadius:12,padding:"16px 20px",display:"flex",alignItems:"center",gap:14,flexWrap:"wrap" }}>
+          <span style={{ fontSize:22 }}>🏦</span>
+          <div style={{ flex:1,minWidth:200 }}>
+            <div style={{ fontSize:13,fontWeight:700,color:"#fff" }}>Connect your bank to catch underpayments automatically</div>
+            <div style={{ fontSize:12,color:"#a8e6cf" }}>Deposits import on their own and get matched against what you're owed — read-only, never moves money.</div>
+          </div>
+          <Btn onClick={()=>setShowPlaid(true)} style={{ background:"#fff",color:"#0F6E56" }}>Connect bank</Btn>
+          <button onClick={dismissBankPrompt} title="Dismiss" style={{ background:"none",border:"none",color:"#a8e6cf",fontSize:16,cursor:"pointer",padding:4 }}>✕</button>
+        </div>
+      )}
 
       {/* Underpayment alert */}
       {Math.abs(variance)>50&&(
@@ -2494,14 +2518,11 @@ const OnboardingShell = ({ step, total, children }) => (
 
 const Onboarding = ({ onComplete, onTransactionsSynced }) => {
   const [step, setStep] = useState(1);
-  const TOTAL = 5;
+  const TOTAL = 4;
 
   const [profile, setProfile] = useState({ name:"", email:"", province:"ON", licenseNumber:"", school:"", graduatingYear:"", isCorp:false });
   const [practices, setPracticesList] = useState([]); // practices already added
   const [draft, setDraft] = useState({ name:"", pct:35, basis:"collections", deductsLabFees:false, guarantee:0, color:PRACTICE_COLORS[0] });
-  const [bankConnected, setBankConnected] = useState(false);
-  const [showPlaid, setShowPlaid] = useState(false);
-  const [connectedAccts, setConnectedAccts] = useState([]);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -2528,7 +2549,10 @@ const Onboarding = ({ onComplete, onTransactionsSynced }) => {
     // Include whatever's currently in the draft form too, so someone with
     // just one practice doesn't have to remember to hit "Add" before continuing.
     const finalPractices = draftValid ? [...practices, { ...draft }] : practices;
-    onComplete({ profile: finalProfile, practices: finalPractices.map(p=>({ ...p, address:"", city:"", postalCode:"" })), connectedAccts });
+    // Bank connection no longer happens during onboarding — it's prompted
+    // later, on the Home tab, once someone's actually seen the app do
+    // something useful first.
+    onComplete({ profile: finalProfile, practices: finalPractices.map(p=>({ ...p, address:"", city:"", postalCode:"" })), connectedAccts: [] });
   };
 
 
@@ -2681,39 +2705,8 @@ const Onboarding = ({ onComplete, onTransactionsSynced }) => {
     </OnboardingShell>
   );
 
-  // Step 4 — Connect bank
+  // Step 4 — Ready
   if(step===4) return (
-    <OnboardingShell step={step} total={TOTAL}>
-      {showPlaid&&(
-        <PlaidModal
-          onConnect={accs=>{ setConnectedAccts(accs); setBankConnected(true); setShowPlaid(false); setStep(5); }}
-          onTransactionsSynced={onTransactionsSynced}
-          onClose={()=>setShowPlaid(false)}
-        />
-      )}
-      <div style={{ fontSize:22,fontWeight:800,color:"#1e293b",marginBottom:4 }}>Connect your bank</div>
-      <div style={{ fontSize:13,color:"#94a3b8",marginBottom:24 }}>This is how DentaTrack catches underpayments — by matching deposits against what you were owed.</div>
-      <div style={{ background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:12,padding:"16px 18px",marginBottom:16 }}>
-        <div style={{ fontSize:13,fontWeight:600,color:"#166534",marginBottom:8 }}>What connecting does</div>
-        {["Practice deposits show up automatically as collections","Business expenses match to your receipts","Reconciliation runs in the background — you see gaps immediately"].map(t=>(
-          <div key={t} style={{ display:"flex",gap:8,fontSize:12,color:"#166534",marginBottom:4 }}><span>✓</span><span>{t}</span></div>
-        ))}
-      </div>
-      <div style={{ background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:12,padding:"14px 16px",marginBottom:20,fontSize:12,color:"#64748b" }}>
-        🔒 Read-only access only — DentaTrack can never move money. Secured by Plaid with 256-bit encryption.
-      </div>
-      <div style={{ display:"flex",flexDirection:"column",gap:12 }}>
-        <Btn size="lg" onClick={()=>setShowPlaid(true)} style={{ width:"100%",justifyContent:"center" }}>🏦 Connect my bank</Btn>
-        <button onClick={()=>setStep(5)} style={{ background:"none",border:"none",color:"#94a3b8",fontSize:13,cursor:"pointer",textAlign:"center",padding:"10px 0" }}>
-          Skip for now — I'll connect later
-        </button>
-        <button onClick={()=>setStep(3)} style={{ background:"none",border:"none",color:"#94a3b8",fontSize:13,cursor:"pointer",textAlign:"center" }}>← Back</button>
-      </div>
-    </OnboardingShell>
-  );
-
-  // Step 5 — Ready
-  if(step===5) return (
     <OnboardingShell step={step} total={TOTAL}>
       <div style={{ textAlign:"center" }}>
         <div style={{ fontSize:48,marginBottom:16 }}>🎉</div>
@@ -2730,10 +2723,7 @@ const Onboarding = ({ onComplete, onTransactionsSynced }) => {
             return <><strong>{all.length} practices</strong> are set up and ready to go</>;
           })()}
         </div>
-        {bankConnected
-          ? <div style={{ fontSize:13,color:"#0F6E56",fontWeight:600,marginBottom:24 }}>✓ Bank connected — your feed will populate shortly</div>
-          : <div style={{ fontSize:12,color:"#94a3b8",marginBottom:24 }}>Bank not connected yet — add it anytime from Settings.</div>
-        }
+        <div style={{ fontSize:12,color:"#94a3b8",marginBottom:24 }}>You can connect your bank whenever you're ready — we'll remind you once you're in.</div>
         <Btn size="lg" onClick={finish} style={{ width:"100%",justifyContent:"center" }}>Log my first day →</Btn>
       </div>
     </OnboardingShell>
@@ -3103,7 +3093,7 @@ export default function App() {
             {tab==="settings"&&"Profile, practices, and corp settings"}
           </div>
         </div>
-        {tab==="home"         &&<HomeTab         production={production} expenses={expenses} banks={smartBanks} agreement={agreement} matches={matches} practices={practices} isMobile={isMobile} collectionsSummary={collectionsSummary}/>}
+        {tab==="home"         &&<HomeTab         production={production} expenses={expenses} banks={smartBanks} agreement={agreement} matches={matches} practices={practices} isMobile={isMobile} collectionsSummary={collectionsSummary} connectedAccounts={connectedAccounts} setConnectedAccounts={setConnectedAccounts} onTransactionsSynced={mergeSyncedTransactions}/>}
         {tab==="production"   &&<ProductionTab   production={production} setProduction={setProduction} practices={practices}/>}
         {tab==="transactions" &&<TransactionsTab expenses={expenses} setExpenses={setExpenses} banks={smartBanks} setBanks={setBanks} tagBank={tagBank} agreement={agreement} matches={matches} practices={practices} production={production} isMobile={isMobile} bankRules={bankRules} addRule={addRule} duplicateIds={duplicateIds} connectedAccounts={connectedAccounts}/>}
         {tab==="settings"     &&<SettingsTab     agreement={agreement} setAgreement={setAgreement} practices={practices} setPractices={setPractices} isMobile={isMobile} connectedAccounts={connectedAccounts} setConnectedAccounts={setConnectedAccounts} setBanks={setBanks} activeSection={settingsSection} bankRules={bankRules} addRule={addRule} updateRule={updateRule} deleteRule={deleteRule}/>}

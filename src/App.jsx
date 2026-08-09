@@ -1322,6 +1322,14 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
     try { return JSON.parse(localStorage.getItem("dt_dismissed_banners")||"[]"); } catch { return []; }
   });
   const [showDismissedMenu, setShowDismissedMenu] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const toggleSelected = (id) => setSelectedIds(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+  const exitSelectMode = () => { setSelectMode(false); setSelectedIds(new Set()); };
   const dismissBanner = (key) => setDismissedBanners(prev => {
     const next = [...new Set([...prev, key])];
     try { localStorage.setItem("dt_dismissed_banners", JSON.stringify(next)); } catch {}
@@ -1472,12 +1480,37 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
                     : "All transactions reviewed"}
                 </div>
               </div>
-              <div style={{ display:"flex",gap:8,alignItems:"center" }}>
+              <div style={{ display:"flex",gap:8,alignItems:"center",flexWrap:"wrap" }}>
                 <Btn size="sm" variant="secondary" onClick={()=>{ const ids=new Set(filteredBanks.map(x=>x.id)); setBanks(bk=>bk.map(x=>ids.has(x.id)?{...x,reviewed:true}:x)); }}>✓ Mark all reviewed</Btn>
                 <Btn size="sm" variant="ghost" onClick={()=>{ const ids=new Set(filteredBanks.map(x=>x.id)); setBanks(bk=>bk.map(x=>ids.has(x.id)?{...x,reviewed:false}:x)); }}>↩ Mark all unreviewed</Btn>
+                <Btn size="sm" variant={selectMode?"primary":"ghost"} onClick={()=>selectMode?exitSelectMode():setSelectMode(true)}>{selectMode?"Cancel select":"☑ Select"}</Btn>
                 <Badge label="Live sync" color="green"/>
               </div>
             </div>
+
+            {selectMode&&(
+              <div style={{ display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginTop:12,paddingTop:12,borderTop:"1px solid #e2e8f0" }}>
+                <button
+                  onClick={()=>setSelectedIds(prev => prev.size===filteredBanks.length ? new Set() : new Set(filteredBanks.map(x=>x.id)))}
+                  style={{ fontSize:12,fontWeight:600,color:"#0F6E56",background:"none",border:"none",cursor:"pointer",padding:0 }}>
+                  {selectedIds.size===filteredBanks.length&&filteredBanks.length>0 ? "Deselect all" : "Select all"}
+                </button>
+                <span style={{ fontSize:12,color:"#94a3b8" }}>{selectedIds.size} selected</span>
+                {selectedIds.size>0&&(
+                  <div style={{ display:"flex",gap:8,marginLeft:"auto",flexWrap:"wrap" }}>
+                    <Btn size="sm" variant="secondary" onClick={()=>{ setBanks(bk=>bk.map(x=>selectedIds.has(x.id)?{...x,reviewed:true}:x)); }}>✓ Mark reviewed</Btn>
+                    <Btn size="sm" variant="ghost" onClick={()=>{ setBanks(bk=>bk.map(x=>selectedIds.has(x.id)?{...x,reviewed:false}:x)); }}>↩ Unmark reviewed</Btn>
+                    <Btn size="sm" variant="ghost" onClick={()=>{ setBanks(bk=>bk.map(x=>selectedIds.has(x.id)?{...x,type:"personal",userTagged:true,reviewed:true}:x)); }}>Tag personal</Btn>
+                    <Btn size="sm" variant="danger" onClick={()=>{
+                      if(window.confirm(`Delete ${selectedIds.size} transaction${selectedIds.size!==1?"s":""}? This can't be undone.`)){
+                        setBanks(bk=>bk.filter(x=>!selectedIds.has(x.id)));
+                        exitSelectMode();
+                      }
+                    }}>🗑 Delete</Btn>
+                  </div>
+                )}
+              </div>
+            )}
             {/* Color legend */}
             <div style={{ display:"flex",gap:16,flexWrap:"wrap",marginTop:10,paddingTop:10,borderTop:"1px solid #e2e8f0" }}>
               <div style={{ display:"flex",alignItems:"center",gap:6,fontSize:11,color:"#64748b" }}>
@@ -1514,18 +1547,23 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
                 <div key={b.id}>
                   {/* Clickable summary row */}
                   <div
-                    onClick={()=>setExpandedId(isOpen ? null : b.id)}
+                    onClick={()=>selectMode ? toggleSelected(b.id) : setExpandedId(isOpen ? null : b.id)}
                     style={{ display:"flex",alignItems:"center",gap:12,padding:"12px 20px",
                       borderBottom: isOpen ? "none" : "1px solid #f1f5f9",
-                      borderLeft:"3px solid "+borderColor,
-                      background: isOpen ? "#f8fafc" : i%2===0?"#fff":"#fafafa",
-                      opacity: b.reviewed ? 0.5 : 1,
-                      filter: b.reviewed ? "grayscale(1)" : "none",
+                      borderLeft:"3px solid "+(selectedIds.has(b.id)?"#0F6E56":borderColor),
+                      background: selectedIds.has(b.id) ? "#E1F5EE" : isOpen ? "#f8fafc" : i%2===0?"#fff":"#fafafa",
+                      opacity: b.reviewed && !selectMode ? 0.5 : 1,
+                      filter: b.reviewed && !selectMode ? "grayscale(1)" : "none",
                       transition:"opacity 0.2s, filter 0.2s",
                       cursor:"pointer",userSelect:"none" }}>
-                    {/* Status dot */}
-                    <div style={{ width:7,height:7,borderRadius:"50%",flexShrink:0,
-                      background: !isTagged?"#f59e0b":b.autoTagged?"#3b82f6":"#e2e8f0" }} />
+                    {/* Checkbox (select mode) or status dot */}
+                    {selectMode ? (
+                      <input type="checkbox" checked={selectedIds.has(b.id)} onChange={()=>toggleSelected(b.id)} onClick={e=>e.stopPropagation()}
+                        style={{ width:16,height:16,flexShrink:0,accentColor:"#0F6E56",cursor:"pointer" }} />
+                    ) : (
+                      <div style={{ width:7,height:7,borderRadius:"50%",flexShrink:0,
+                        background: !isTagged?"#f59e0b":b.autoTagged?"#3b82f6":"#e2e8f0" }} />
+                    )}
 
                     {/* Description + meta */}
                     <div style={{ flex:1,minWidth:0 }}>

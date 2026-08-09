@@ -1294,6 +1294,26 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
   const [splittingId, setSplittingId]     = useState(null); // bankId currently being split-edited
   const [splitDraft, setSplitDraft]       = useState([]);   // [{id,category,amount}] while editing
   const [monthFilter, setMonthFilter]     = useState("all");
+  const [dismissedBanners, setDismissedBanners] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("dt_dismissed_banners")||"[]"); } catch { return []; }
+  });
+  const [showDismissedMenu, setShowDismissedMenu] = useState(false);
+  const dismissBanner = (key) => setDismissedBanners(prev => {
+    const next = [...new Set([...prev, key])];
+    try { localStorage.setItem("dt_dismissed_banners", JSON.stringify(next)); } catch {}
+    return next;
+  });
+  const restoreBanner = (key) => setDismissedBanners(prev => {
+    const next = prev.filter(k=>k!==key);
+    try { localStorage.setItem("dt_dismissed_banners", JSON.stringify(next)); } catch {}
+    return next;
+  });
+  useEffect(() => {
+    if (!showDismissedMenu) return;
+    const close = () => setShowDismissedMenu(false);
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [showDismissedMenu]);
   const [accountFilter, setAccountFilter] = useState("all");
 
   const SUBS = [
@@ -1370,24 +1390,48 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
         <StatCard label="Missing receipts"   value={String(missingReceiptCount)} sub="deductibles without documentation" color={missingReceiptCount>0?"#991b1b":"#1e293b"}/>
       </div>
 
-      {duplicateCount>0&&(
+      {dismissedBanners.length>0&&(
+        <div style={{ position:"relative",display:"flex",justifyContent:"flex-end" }}>
+          <button onClick={(e)=>{ e.stopPropagation(); setShowDismissedMenu(m=>!m); }} style={{ display:"flex",alignItems:"center",gap:6,background:"#f1f5f9",border:"none",borderRadius:99,padding:"6px 12px",fontSize:12,fontWeight:600,color:"#64748b",cursor:"pointer" }}>
+            🔔 {dismissedBanners.length} hidden
+          </button>
+          {showDismissedMenu&&(
+            <div onClick={e=>e.stopPropagation()} style={{ position:"absolute",top:34,right:0,width:260,background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.12)",zIndex:150,overflow:"hidden" }}>
+              <div style={{ padding:"10px 14px",borderBottom:"1px solid #f1f5f9",fontSize:12,fontWeight:600,color:"#64748b" }}>Hidden alerts</div>
+              {[
+                { key:"duplicates", label:"Possible duplicates warning" },
+                { key:"missingReceipts", label:"Missing receipts reminder" },
+              ].filter(b=>dismissedBanners.includes(b.key)).map(b=>(
+                <div key={b.key} style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",fontSize:13,color:"#334155" }}>
+                  <span>{b.label}</span>
+                  <button onClick={()=>{ restoreBanner(b.key); }} style={{ background:"none",border:"none",color:"#0F6E56",fontWeight:600,fontSize:12,cursor:"pointer" }}>Show</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {duplicateCount>0&&!dismissedBanners.includes("duplicates")&&(
         <div style={{ background:"#fef2f2",border:"1px solid #fecaca",borderRadius:10,padding:"12px 18px",display:"flex",alignItems:"center",gap:10 }}>
           <span>⚠️</span>
           <div style={{ flex:1 }}>
             <div style={{ fontSize:13,fontWeight:700,color:"#991b1b" }}>{duplicateCount} transactions look like possible duplicates</div>
             <div style={{ fontSize:12,color:"#b91c1c" }}>Same amount, same day (±1) as another transaction. Marked with ⚠ below — review before counting both.</div>
           </div>
+          <button onClick={()=>dismissBanner("duplicates")} title="Dismiss — find it again under 🔔 hidden" style={{ background:"none",border:"none",color:"#991b1b",fontSize:16,cursor:"pointer",padding:4,flexShrink:0 }}>✕</button>
         </div>
       )}
 
-      {missingReceiptCount>0&&(
-        <div onClick={()=>setSub("deductibles")} style={{ background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"12px 18px",display:"flex",alignItems:"center",gap:10,cursor:"pointer" }}>
+      {missingReceiptCount>0&&!dismissedBanners.includes("missingReceipts")&&(
+        <div style={{ background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"12px 18px",display:"flex",alignItems:"center",gap:10 }}>
           <span>📄</span>
-          <div style={{ flex:1 }}>
+          <div onClick={()=>setSub("deductibles")} style={{ flex:1,cursor:"pointer" }}>
             <div style={{ fontSize:13,fontWeight:700,color:"#92400e" }}>{missingReceiptCount} deductible transactions missing a receipt</div>
             <div style={{ fontSize:12,color:"#b45309" }}>CRA requires receipts for all business expense claims. Tap to review.</div>
           </div>
-          <span style={{ fontSize:12,color:"#92400e",fontWeight:600,whiteSpace:"nowrap" }}>Review →</span>
+          <span onClick={()=>setSub("deductibles")} style={{ fontSize:12,color:"#92400e",fontWeight:600,whiteSpace:"nowrap",cursor:"pointer" }}>Review →</span>
+          <button onClick={()=>dismissBanner("missingReceipts")} title="Dismiss — find it again under 🔔 hidden" style={{ background:"none",border:"none",color:"#92400e",fontSize:16,cursor:"pointer",padding:4,flexShrink:0 }}>✕</button>
         </div>
       )}
 

@@ -690,6 +690,77 @@ const TaxPlanningModal = ({ defaultSalary, onClose }) => {
   );
 };
 
+// ── Feedback ─────────────────────────────────────────────────────────────
+// Every bug or confusing moment for a beta tester used to only ever reach
+// Hadi if they went out of their way to track him down separately. This is
+// that missing "tell someone, right now, from wherever you are" button.
+const FEEDBACK_TYPES = [
+  { v:"bug",   l:"🐞 Something's broken" },
+  { v:"idea",  l:"💡 Feature idea" },
+  { v:"other", l:"💬 Something else" },
+];
+const FeedbackModal = ({ onClose, currentTab }) => {
+  const [type, setType] = useState("bug");
+  const [message, setMessage] = useState("");
+  const [status, setStatus] = useState("idle"); // idle | sending | sent | error
+  const [error, setError] = useState("");
+
+  const send = async () => {
+    if (!message.trim()) return;
+    setStatus("sending");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const resp = await fetch("/api/send-feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ type, message, page: currentTab }),
+      });
+      const json = await resp.json();
+      if (!resp.ok) throw new Error(json.error || "Could not send feedback.");
+      setStatus("sent");
+    } catch (e) {
+      setError(e.message);
+      setStatus("error");
+    }
+  };
+
+  return (
+    <div className="dt-modal-overlay" style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1200 }}>
+      <Card className="dt-modal-card" style={{ width:420,padding:28,overflowY:"auto",maxHeight:"90vh" }}>
+        {status==="sent" ? (
+          <div style={{ textAlign:"center",padding:"20px 0" }}>
+            <div style={{ fontSize:32,marginBottom:10 }}>✅</div>
+            <div style={{ fontWeight:700,color:"#1e293b",marginBottom:4 }}>Thanks — sent!</div>
+            <div style={{ fontSize:13,color:"#64748b",marginBottom:20 }}>This goes straight to the team building the app.</div>
+            <Btn onClick={onClose}>Close</Btn>
+          </div>
+        ) : (
+          <>
+            <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16 }}>
+              <div style={{ fontSize:16,fontWeight:700,color:"#1e293b" }}>Send feedback</div>
+              <Btn variant="ghost" size="sm" onClick={onClose}>Close</Btn>
+            </div>
+            <div style={{ fontSize:13,color:"#64748b",marginBottom:18 }}>Found a bug, or something feel off? Tell us — this goes straight to the team, not into a void.</div>
+            <div style={{ display:"flex",gap:6,marginBottom:16 }}>
+              {FEEDBACK_TYPES.map(t=>(
+                <button key={t.v} onClick={()=>setType(t.v)} style={{ flex:1,padding:"8px 4px",border:"1px solid "+(type===t.v?"#0F6E56":"#e2e8f0"),borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer",background:type===t.v?"#E1F5EE":"#fff",color:type===t.v?"#0F6E56":"#64748b" }}>
+                  {t.l}
+                </button>
+              ))}
+            </div>
+            <textarea value={message} onChange={e=>setMessage(e.target.value)} rows={5} placeholder="What happened? The more detail, the easier it is to fix."
+              style={{ width:"100%",boxSizing:"border-box",padding:"10px 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,fontFamily:"inherit",resize:"vertical",marginBottom:12 }}/>
+            {status==="error" && <div style={{ background:"#fee2e2",color:"#991b1b",borderRadius:8,padding:"10px 14px",fontSize:13,marginBottom:12 }}>{error}</div>}
+            <Btn size="lg" onClick={send} disabled={!message.trim()||status==="sending"} style={{ width:"100%",justifyContent:"center",opacity:(!message.trim()||status==="sending")?0.6:1 }}>
+              {status==="sending" ? "Sending…" : "Send feedback"}
+            </Btn>
+          </>
+        )}
+      </Card>
+    </div>
+  );
+};
+
 const EmailReportModal = ({ agreement, period, expectedPay, totalExp, net, practiceBreakdown, expenseByCategory, onClose }) => {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState("idle"); // idle | sending | sent | error
@@ -2657,6 +2728,7 @@ export default function App() {
   const [agreement, setAgreement]   = useState({ isCorp:false,salary:0,dividends:0,name:"",corpName:"",tourCompleted:true });
   const [connectedAccounts, setConnectedAccounts] = useState([]);
   const [menuOpen, setMenuOpen]     = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
   const [settingsSection, setSettingsSection] = useState(null);
   const [pullDist, setPullDist]     = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -2956,6 +3028,14 @@ export default function App() {
                   ))}
                 </div>
 
+                <div style={{ borderTop:"1px solid #f1f5f9",padding:"8px 16px" }}>
+                  <button onClick={()=>{ setShowFeedback(true); setMenuOpen(false); }} style={{ width:"100%",padding:"9px 0",border:"none",background:"transparent",display:"flex",alignItems:"center",gap:10,cursor:"pointer",textAlign:"left",fontSize:13,color:"#1e293b",fontWeight:500 }}
+                    onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
+                    onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                    <span style={{ fontSize:16 }}>💬</span>Send feedback
+                  </button>
+                </div>
+
                 <div style={{ borderTop:"1px solid #f1f5f9",padding:"8px 16px 12px" }}>
                   <button onClick={() => supabase.auth.signOut()} style={{ width:"100%",padding:"9px 0",border:"none",background:"transparent",color:"#000000",fontSize:13,cursor:"pointer",textAlign:"left" }}>Sign out</button>
                 </div>
@@ -2963,6 +3043,7 @@ export default function App() {
             )}
           </div>
         </div>
+        {showFeedback&&<FeedbackModal onClose={()=>setShowFeedback(false)} currentTab={tab}/>}
       </div>
 
       {/* Content */}

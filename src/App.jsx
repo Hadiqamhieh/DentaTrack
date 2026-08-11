@@ -858,7 +858,7 @@ const EditProductionModal = ({ entry, practices, onSave, onClose }) => {
   );
 };
 
-const HomeTab = ({ production, expenses, banks, agreement, matches, practices, collectionsSummary, connectedAccounts, setConnectedAccounts, onTransactionsSynced }) => {
+const HomeTab = ({ production, expenses, banks, agreement, matches, practices, collectionsSummary, connectedAccounts, setConnectedAccounts, onTransactionsSynced, setTab, goToTransactions }) => {
   const [showEmail, setShowEmail] = useState(false);
   const [showTax, setShowTax]     = useState(false);
   const [showPlaid, setShowPlaid] = useState(false);
@@ -869,6 +869,27 @@ const HomeTab = ({ production, expenses, banks, agreement, matches, practices, c
     setBankPromptDismissed(true);
     try { localStorage.setItem("dt_bank_prompt_dismissed", "1"); } catch {}
   };
+
+  const [dismissedBanners, setDismissedBanners] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("dt_home_dismissed_banners")||"[]"); } catch { return []; }
+  });
+  const [showDismissedMenu, setShowDismissedMenu] = useState(false);
+  const dismissBanner = (key) => setDismissedBanners(prev => {
+    const next = [...new Set([...prev, key])];
+    try { localStorage.setItem("dt_home_dismissed_banners", JSON.stringify(next)); } catch {}
+    return next;
+  });
+  const restoreBanner = (key) => setDismissedBanners(prev => {
+    const next = prev.filter(k=>k!==key);
+    try { localStorage.setItem("dt_home_dismissed_banners", JSON.stringify(next)); } catch {}
+    return next;
+  });
+  useEffect(() => {
+    if (!showDismissedMenu) return;
+    const close = () => setShowDismissedMenu(false);
+    document.addEventListener("click", close);
+    return () => document.removeEventListener("click", close);
+  }, [showDismissedMenu]);
 
   const totalProd   = production.reduce((s,r)=>s+r.production,0);
   const totalExp    = banks.reduce((s,b)=>s+deductibleAmount(b),0);
@@ -931,37 +952,65 @@ const HomeTab = ({ production, expenses, banks, agreement, matches, practices, c
         </div>
       )}
 
+      {dismissedBanners.length>0&&(
+        <div style={{ position:"relative",display:"flex",justifyContent:"flex-end" }}>
+          <button onClick={(e)=>{ e.stopPropagation(); setShowDismissedMenu(m=>!m); }} style={{ display:"flex",alignItems:"center",gap:6,background:"#f1f5f9",border:"none",borderRadius:99,padding:"6px 12px",fontSize:12,fontWeight:600,color:"#64748b",cursor:"pointer" }}>
+            🔔 {dismissedBanners.length} hidden
+          </button>
+          {showDismissedMenu&&(
+            <div onClick={e=>e.stopPropagation()} style={{ position:"absolute",top:34,right:0,width:260,background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,0.12)",zIndex:150,overflow:"hidden" }}>
+              <div style={{ padding:"10px 14px",borderBottom:"1px solid #f1f5f9",fontSize:12,fontWeight:600,color:"#64748b" }}>Hidden alerts</div>
+              {[
+                { key:"payVariance", label:"Expected pay alert" },
+                { key:"receiptMatching", label:"Receipt matching alert" },
+              ].filter(b=>dismissedBanners.includes(b.key)).map(b=>(
+                <div key={b.key} style={{ display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",fontSize:13,color:"#334155" }}>
+                  <span>{b.label}</span>
+                  <button onClick={()=>restoreBanner(b.key)} style={{ background:"none",border:"none",color:"#0F6E56",fontWeight:600,fontSize:12,cursor:"pointer" }}>Show</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Underpayment alert */}
-      {Math.abs(variance)>50&&(
+      {Math.abs(variance)>50&&!dismissedBanners.includes("payVariance")&&(
         <div style={{ background:variance<0?"#fee2e2":"#dcfce7",border:"1px solid "+(variance<0?"#fca5a5":"#86efac"),borderRadius:10,padding:"12px 18px",display:"flex",alignItems:"center",gap:10 }}>
           <span>{variance<0?"⚠️":"✅"}</span>
-          <div>
+          <div style={{ flex:1 }}>
             <div style={{ fontSize:13,fontWeight:700,color:variance<0?"#991b1b":"#166534" }}>
               {variance<0?"Possible underpayment of "+fmt(Math.abs(variance)):fmt(variance)+" ahead of expected pay"}
             </div>
             <div style={{ fontSize:12,color:variance<0?"#b91c1c":"#15803d" }}>Expected {fmt(expectedPay)} · Received {fmt(deposits)}</div>
           </div>
+          <button onClick={()=>dismissBanner("payVariance")} title="Dismiss — find it again under 🔔 hidden" style={{ background:"none",border:"none",color:variance<0?"#991b1b":"#166534",fontSize:16,cursor:"pointer",padding:4,flexShrink:0 }}>✕</button>
         </div>
       )}
 
       {/* Receipt matching alert */}
-      {(pendingExp.length>0||missingReceipt.length>0)&&(
+      {(pendingExp.length>0||missingReceipt.length>0)&&!dismissedBanners.includes("receiptMatching")&&(
         <div style={{ background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"12px 18px",display:"flex",gap:10 }}>
           <span>🔗</span>
-          <div>
+          <div style={{ flex:1 }}>
             <div style={{ fontSize:13,fontWeight:700,color:"#92400e",marginBottom:4 }}>Receipt matching needs attention</div>
             {pendingExp.length>0&&<div style={{ fontSize:12,color:"#b45309" }}>· {pendingExp.length} expense(s) not yet confirmed by bank</div>}
             {missingReceipt.length>0&&<div style={{ fontSize:12,color:"#b45309" }}>· {missingReceipt.length} bank debit(s) have no receipt on file</div>}
           </div>
+          <button onClick={()=>dismissBanner("receiptMatching")} title="Dismiss — find it again under 🔔 hidden" style={{ background:"none",border:"none",color:"#92400e",fontSize:16,cursor:"pointer",padding:4,flexShrink:0 }}>✕</button>
         </div>
       )}
 
       {/* Stat cards */}
       <div style={{ display:"flex",gap:14,flexWrap:"wrap" }}>
-        <StatCard label="Total production"   value={fmt(totalProd)}   sub={"across "+practices.length+" practices"} color="#1e293b" />
-        <StatCard label="Collections"        value={fmt(deposits)}    sub={deposits>0&&totalProd>0 ? pct(deposits,totalProd)+" implied rate" : "bank deposits received"} color="#1e293b" />
-        <StatCard label="Expected pay"       value={fmt(expectedPay)} sub="based on deposits"                       color="#1e293b" />
-        <StatCard label="Deductibles"        value={fmt(totalExp)}    sub={matches.length+" receipts matched"}       color="#1e293b" />
+        <StatCard label="Total production"   value={fmt(totalProd)}   sub={"across "+practices.length+" practices"} color="#1e293b"
+          onClick={()=>setTab?.("production")} />
+        <StatCard label="Collections"        value={fmt(deposits)}    sub={deposits>0&&totalProd>0 ? pct(deposits,totalProd)+" implied rate" : "bank deposits received"} color="#1e293b"
+          onClick={()=>goToTransactions?.("feed","collection")} />
+        <StatCard label="Expected pay"       value={fmt(expectedPay)} sub="based on deposits"                       color="#1e293b"
+          onClick={()=>goToTransactions?.("reconcile")} />
+        <StatCard label="Deductibles"        value={fmt(totalExp)}    sub={matches.length+" receipts matched"}       color="#1e293b"
+          onClick={()=>goToTransactions?.("deductibles")} />
       </div>
 
       {/* Per-practice cards */}
@@ -1311,13 +1360,12 @@ const ManualExpenseModal = ({ agreement, onSave, onClose }) => {
   );
 };
 
-const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agreement, matches, practices, production, bankRules, addRule, duplicateIds, connectedAccounts, isMobile }) => {
+const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agreement, matches, practices, production, bankRules, addRule, duplicateIds, connectedAccounts, isMobile, sub, setSub, typeFilter, setTypeFilter }) => {
   const [pendingRule, setPendingRule]     = useState(null);
   const [expandedId, setExpandedId]       = useState(null);
   const [scanningFor, setScanningFor]     = useState(null); // bankId to attach receipt to
   const [viewingReceipt, setViewingReceipt] = useState(null); // receipt object currently being viewed
   const [showManual, setShowManual]       = useState(false);
-  const [sub, setSub]                     = useState("all");
   const [splittingId, setSplittingId]     = useState(null); // bankId currently being split-edited
   const [splitDraft, setSplitDraft]       = useState([]);   // [{id,category,amount}] while editing
   const [monthFilter, setMonthFilter]     = useState("all");
@@ -1326,7 +1374,6 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
   });
   const [showDismissedMenu, setShowDismissedMenu] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
-  const [typeFilter, setTypeFilter] = useState(null); // null | "collection" | "missingReceipts" — set by clicking a stat card
   const [selectedIds, setSelectedIds] = useState(new Set());
   const toggleSelected = (id) => setSelectedIds(prev => {
     const next = new Set(prev);
@@ -1507,7 +1554,8 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
             </div>
 
             {selectMode&&(
-              <div style={{ display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginTop:12,paddingTop:12,borderTop:"1px solid #e2e8f0" }}>
+              <div style={{ display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginTop:12,paddingTop:12,paddingBottom:12,borderTop:"1px solid #e2e8f0",
+                position:"sticky",top:64,zIndex:90,background:"#fff",marginLeft:-20,marginRight:-20,paddingLeft:20,paddingRight:20,boxShadow:"0 4px 10px rgba(0,0,0,0.04)" }}>
                 <button
                   onClick={()=>setSelectedIds(prev => prev.size===filteredBanks.length ? new Set() : new Set(filteredBanks.map(x=>x.id)))}
                   style={{ fontSize:12,fontWeight:600,color:"#0F6E56",background:"none",border:"none",cursor:"pointer",padding:0 }}>
@@ -1954,53 +2002,6 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
               )}
             </Card>);
           })}
-        </div>
-      )}
-
-      {/* Floating select access — reachable no matter how far down the feed
-          you've scrolled, instead of only living in the header up top. */}
-      {(sub==="all"||sub==="feed")&&!selectMode&&(
-        <button onClick={()=>setSelectMode(true)} style={{
-          position:"fixed", right:20, bottom:isMobile?"calc(96px + env(safe-area-inset-bottom))":24,
-          background:"#0F6E56", color:"#fff", border:"none", borderRadius:99, padding:"12px 20px",
-          fontSize:13, fontWeight:700, cursor:"pointer", boxShadow:"0 8px 20px rgba(15,110,86,0.35)",
-          display:"flex", alignItems:"center", gap:8, zIndex:150 }}>
-          ☑ Select
-        </button>
-      )}
-
-      {selectMode&&(
-        <div style={{
-          position:"fixed", left:isMobile?12:"50%", right:isMobile?12:"auto",
-          bottom:isMobile?"calc(84px + env(safe-area-inset-bottom))":24,
-          transform:isMobile?"none":"translateX(-50%)",
-          background:"#1e293b", color:"#fff", borderRadius:14, padding:"12px 16px",
-          boxShadow:"0 10px 30px rgba(0,0,0,0.3)", zIndex:150,
-          display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", maxWidth:isMobile?"none":640 }}>
-          <span style={{ fontSize:13, fontWeight:700, whiteSpace:"nowrap" }}>{selectedIds.size} selected</span>
-          {selectedIds.size>0&&(
-            <>
-              <button onClick={()=>{ setBanks(bk=>bk.map(x=>selectedIds.has(x.id)?{...x,reviewed:true}:x)); }} style={{ background:"rgba(255,255,255,0.12)",border:"none",color:"#fff",borderRadius:8,padding:"6px 10px",fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap" }}>✓ Reviewed</button>
-              <select value="" onChange={e=>{
-                  if(!e.target.value) return;
-                  const cat = getCategory(e.target.value);
-                  setBanks(bk=>bk.map(x=>selectedIds.has(x.id)?{...x,type:"business",category:cat.label,taxDeductible:cat.deductible,deductibleFraction:cat.fraction,corpExpense:agreement.isCorp&&cat.deductible,userTagged:true,reviewed:true}:x));
-                  e.target.value="";
-                }}
-                style={{ background:"rgba(255,255,255,0.12)",border:"none",color:"#fff",borderRadius:8,padding:"6px 10px",fontSize:12,fontWeight:600,cursor:"pointer" }}>
-                <option value="" style={{ color:"#1e293b" }}>Tag as…</option>
-                {EXPENSE_CAT_LABELS.map(c=><option key={c} value={c} style={{ color:"#1e293b" }}>{c}</option>)}
-              </select>
-              <button onClick={()=>{ setBanks(bk=>bk.map(x=>selectedIds.has(x.id)?{...x,type:"review",userTagged:false,autoTagged:false,reviewed:false,matchedRule:null}:x)); }} style={{ background:"rgba(255,255,255,0.12)",border:"none",color:"#fff",borderRadius:8,padding:"6px 10px",fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap" }}>Clear tag</button>
-              <button onClick={()=>{
-                  if(window.confirm(`Delete ${selectedIds.size} transaction${selectedIds.size!==1?"s":""}? This can't be undone.`)){
-                    setBanks(bk=>bk.filter(x=>!selectedIds.has(x.id)));
-                    exitSelectMode();
-                  }
-                }} style={{ background:"#fee2e2",border:"none",color:"#991b1b",borderRadius:8,padding:"6px 10px",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap" }}>🗑 Delete</button>
-            </>
-          )}
-          <button onClick={exitSelectMode} style={{ marginLeft:"auto",background:"none",border:"none",color:"#cbd5e1",fontSize:16,cursor:"pointer",padding:"0 2px" }}>✕</button>
         </div>
       )}
     </div>
@@ -2876,6 +2877,11 @@ export default function App() {
   const [agreement, setAgreement]   = useState({ isCorp:false,salary:0,dividends:0,name:"",corpName:"",tourCompleted:true });
   const [connectedAccounts, setConnectedAccounts] = useState([]);
   const [menuOpen, setMenuOpen]     = useState(false);
+  // Lifted out of TransactionsTab so Home's stat cards can deep-link into a
+  // specific filtered view instead of just switching to a blank tab.
+  const [txSub, setTxSub] = useState("all");
+  const [txTypeFilter, setTxTypeFilter] = useState(null);
+  const goToTransactions = (subView, filter=null) => { setTxSub(subView); setTxTypeFilter(filter); setTab("transactions"); };
   const [showFeedback, setShowFeedback] = useState(false);
   const [settingsSection, setSettingsSection] = useState(null);
   const [pullDist, setPullDist]     = useState(0);
@@ -3207,9 +3213,9 @@ export default function App() {
             {tab==="settings"&&"Profile, practices, and corp settings"}
           </div>
         </div>
-        {tab==="home"         &&<HomeTab         production={production} expenses={expenses} banks={smartBanks} agreement={agreement} matches={matches} practices={practices} isMobile={isMobile} collectionsSummary={collectionsSummary} connectedAccounts={connectedAccounts} setConnectedAccounts={setConnectedAccounts} onTransactionsSynced={mergeSyncedTransactions}/>}
+        {tab==="home"         &&<HomeTab         production={production} expenses={expenses} banks={smartBanks} agreement={agreement} matches={matches} practices={practices} isMobile={isMobile} collectionsSummary={collectionsSummary} connectedAccounts={connectedAccounts} setConnectedAccounts={setConnectedAccounts} onTransactionsSynced={mergeSyncedTransactions} setTab={setTab} goToTransactions={goToTransactions}/>}
         {tab==="production"   &&<ProductionTab   production={production} setProduction={setProduction} practices={practices}/>}
-        {tab==="transactions" &&<TransactionsTab expenses={expenses} setExpenses={setExpenses} banks={smartBanks} setBanks={setBanks} tagBank={tagBank} agreement={agreement} matches={matches} practices={practices} production={production} isMobile={isMobile} bankRules={bankRules} addRule={addRule} duplicateIds={duplicateIds} connectedAccounts={connectedAccounts}/>}
+        {tab==="transactions" &&<TransactionsTab expenses={expenses} setExpenses={setExpenses} banks={smartBanks} setBanks={setBanks} tagBank={tagBank} agreement={agreement} matches={matches} practices={practices} production={production} isMobile={isMobile} bankRules={bankRules} addRule={addRule} duplicateIds={duplicateIds} connectedAccounts={connectedAccounts} sub={txSub} setSub={setTxSub} typeFilter={txTypeFilter} setTypeFilter={setTxTypeFilter}/>}
         {tab==="settings"     &&<SettingsTab     agreement={agreement} setAgreement={setAgreement} practices={practices} setPractices={setPractices} isMobile={isMobile} connectedAccounts={connectedAccounts} setConnectedAccounts={setConnectedAccounts} setBanks={setBanks} activeSection={settingsSection} bankRules={bankRules} addRule={addRule} updateRule={updateRule} deleteRule={deleteRule}/>}
       </div>
 

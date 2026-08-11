@@ -1311,7 +1311,7 @@ const ManualExpenseModal = ({ agreement, onSave, onClose }) => {
   );
 };
 
-const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agreement, matches, practices, production, bankRules, addRule, duplicateIds, connectedAccounts }) => {
+const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agreement, matches, practices, production, bankRules, addRule, duplicateIds, connectedAccounts, isMobile }) => {
   const [pendingRule, setPendingRule]     = useState(null);
   const [expandedId, setExpandedId]       = useState(null);
   const [scanningFor, setScanningFor]     = useState(null); // bankId to attach receipt to
@@ -1515,10 +1515,21 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
                 </button>
                 <span style={{ fontSize:12,color:"#94a3b8" }}>{selectedIds.size} selected</span>
                 {selectedIds.size>0&&(
-                  <div style={{ display:"flex",gap:8,marginLeft:"auto",flexWrap:"wrap" }}>
+                  <div style={{ display:"flex",gap:8,marginLeft:"auto",flexWrap:"wrap",alignItems:"center" }}>
                     <Btn size="sm" variant="secondary" onClick={()=>{ setBanks(bk=>bk.map(x=>selectedIds.has(x.id)?{...x,reviewed:true}:x)); }}>✓ Mark reviewed</Btn>
                     <Btn size="sm" variant="ghost" onClick={()=>{ setBanks(bk=>bk.map(x=>selectedIds.has(x.id)?{...x,reviewed:false}:x)); }}>↩ Unmark reviewed</Btn>
                     <Btn size="sm" variant="ghost" onClick={()=>{ setBanks(bk=>bk.map(x=>selectedIds.has(x.id)?{...x,type:"personal",userTagged:true,reviewed:true}:x)); }}>Tag personal</Btn>
+                    <select value="" onChange={e=>{
+                        if(!e.target.value) return;
+                        const cat = getCategory(e.target.value);
+                        setBanks(bk=>bk.map(x=>selectedIds.has(x.id)?{...x,type:"business",category:cat.label,taxDeductible:cat.deductible,deductibleFraction:cat.fraction,corpExpense:agreement.isCorp&&cat.deductible,userTagged:true,reviewed:true}:x));
+                        e.target.value="";
+                      }}
+                      style={{ padding:"7px 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,fontWeight:600,color:"#334155",background:"#fff",cursor:"pointer" }}>
+                      <option value="">Tag as category…</option>
+                      {EXPENSE_CAT_LABELS.map(c=><option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <Btn size="sm" variant="ghost" onClick={()=>{ setBanks(bk=>bk.map(x=>selectedIds.has(x.id)?{...x,type:"review",userTagged:false,autoTagged:false,reviewed:false,matchedRule:null}:x)); }}>Clear tag</Btn>
                     <Btn size="sm" variant="danger" onClick={()=>{
                       if(window.confirm(`Delete ${selectedIds.size} transaction${selectedIds.size!==1?"s":""}? This can't be undone.`)){
                         setBanks(bk=>bk.filter(x=>!selectedIds.has(x.id)));
@@ -1943,6 +1954,53 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
               )}
             </Card>);
           })}
+        </div>
+      )}
+
+      {/* Floating select access — reachable no matter how far down the feed
+          you've scrolled, instead of only living in the header up top. */}
+      {(sub==="all"||sub==="feed")&&!selectMode&&(
+        <button onClick={()=>setSelectMode(true)} style={{
+          position:"fixed", right:20, bottom:isMobile?"calc(96px + env(safe-area-inset-bottom))":24,
+          background:"#0F6E56", color:"#fff", border:"none", borderRadius:99, padding:"12px 20px",
+          fontSize:13, fontWeight:700, cursor:"pointer", boxShadow:"0 8px 20px rgba(15,110,86,0.35)",
+          display:"flex", alignItems:"center", gap:8, zIndex:150 }}>
+          ☑ Select
+        </button>
+      )}
+
+      {selectMode&&(
+        <div style={{
+          position:"fixed", left:isMobile?12:"50%", right:isMobile?12:"auto",
+          bottom:isMobile?"calc(84px + env(safe-area-inset-bottom))":24,
+          transform:isMobile?"none":"translateX(-50%)",
+          background:"#1e293b", color:"#fff", borderRadius:14, padding:"12px 16px",
+          boxShadow:"0 10px 30px rgba(0,0,0,0.3)", zIndex:150,
+          display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", maxWidth:isMobile?"none":640 }}>
+          <span style={{ fontSize:13, fontWeight:700, whiteSpace:"nowrap" }}>{selectedIds.size} selected</span>
+          {selectedIds.size>0&&(
+            <>
+              <button onClick={()=>{ setBanks(bk=>bk.map(x=>selectedIds.has(x.id)?{...x,reviewed:true}:x)); }} style={{ background:"rgba(255,255,255,0.12)",border:"none",color:"#fff",borderRadius:8,padding:"6px 10px",fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap" }}>✓ Reviewed</button>
+              <select value="" onChange={e=>{
+                  if(!e.target.value) return;
+                  const cat = getCategory(e.target.value);
+                  setBanks(bk=>bk.map(x=>selectedIds.has(x.id)?{...x,type:"business",category:cat.label,taxDeductible:cat.deductible,deductibleFraction:cat.fraction,corpExpense:agreement.isCorp&&cat.deductible,userTagged:true,reviewed:true}:x));
+                  e.target.value="";
+                }}
+                style={{ background:"rgba(255,255,255,0.12)",border:"none",color:"#fff",borderRadius:8,padding:"6px 10px",fontSize:12,fontWeight:600,cursor:"pointer" }}>
+                <option value="" style={{ color:"#1e293b" }}>Tag as…</option>
+                {EXPENSE_CAT_LABELS.map(c=><option key={c} value={c} style={{ color:"#1e293b" }}>{c}</option>)}
+              </select>
+              <button onClick={()=>{ setBanks(bk=>bk.map(x=>selectedIds.has(x.id)?{...x,type:"review",userTagged:false,autoTagged:false,reviewed:false,matchedRule:null}:x)); }} style={{ background:"rgba(255,255,255,0.12)",border:"none",color:"#fff",borderRadius:8,padding:"6px 10px",fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap" }}>Clear tag</button>
+              <button onClick={()=>{
+                  if(window.confirm(`Delete ${selectedIds.size} transaction${selectedIds.size!==1?"s":""}? This can't be undone.`)){
+                    setBanks(bk=>bk.filter(x=>!selectedIds.has(x.id)));
+                    exitSelectMode();
+                  }
+                }} style={{ background:"#fee2e2",border:"none",color:"#991b1b",borderRadius:8,padding:"6px 10px",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap" }}>🗑 Delete</button>
+            </>
+          )}
+          <button onClick={exitSelectMode} style={{ marginLeft:"auto",background:"none",border:"none",color:"#cbd5e1",fontSize:16,cursor:"pointer",padding:"0 2px" }}>✕</button>
         </div>
       )}
     </div>

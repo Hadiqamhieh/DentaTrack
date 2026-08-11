@@ -295,11 +295,14 @@ const PracticeDot = ({ color, name }) => (
 const Card = ({ children, style, className, ...rest }) => (
   <div className={className} style={{ background:"#fff", borderRadius:12, border:"1px solid #e2e8f0", padding:"20px 24px", ...style }} {...rest}>{children}</div>
 );
-const StatCard = ({ label, value, sub, color="#0F6E56" }) => (
-  <Card style={{ flex:1, minWidth:150 }}>
+const StatCard = ({ label, value, sub, color="#0F6E56", onClick }) => (
+  <Card onClick={onClick} style={{ flex:1, minWidth:150, cursor:onClick?"pointer":"default", transition:"box-shadow 0.15s, transform 0.15s" }}
+    onMouseEnter={onClick?(e=>{ e.currentTarget.style.boxShadow="0 4px 14px rgba(0,0,0,0.08)"; e.currentTarget.style.transform="translateY(-1px)"; }):undefined}
+    onMouseLeave={onClick?(e=>{ e.currentTarget.style.boxShadow=""; e.currentTarget.style.transform=""; }):undefined}>
     <div style={{ fontSize:11, color:"#64748b", fontWeight:500, marginBottom:6, textTransform:"uppercase", letterSpacing:"0.06em" }}>{label}</div>
     <div style={{ fontSize:24, fontWeight:700, color, letterSpacing:"-0.02em" }}>{value}</div>
     {sub && <div style={{ fontSize:12, color:"#94a3b8", marginTop:4 }}>{sub}</div>}
+    {onClick && <div style={{ fontSize:11, color:"#0F6E56", fontWeight:600, marginTop:6 }}>View →</div>}
   </Card>
 );
 const Input = ({ label, ...p }) => (
@@ -1323,6 +1326,7 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
   });
   const [showDismissedMenu, setShowDismissedMenu] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
+  const [typeFilter, setTypeFilter] = useState(null); // null | "collection" | "missingReceipts" — set by clicking a stat card
   const [selectedIds, setSelectedIds] = useState(new Set());
   const toggleSelected = (id) => setSelectedIds(prev => {
     const next = new Set(prev);
@@ -1388,7 +1392,7 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
       <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10 }}>
         <div style={{ display:"flex",gap:2,background:"#f1f5f9",borderRadius:10,padding:3,overflowX:"auto" }}>
           {SUBS.map(s=>(
-            <button key={s.key} onClick={()=>setSub(s.key)} style={{ padding:"7px 16px",border:"none",borderRadius:8,fontSize:13,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap",background:sub===s.key?"#fff":"transparent",color:sub===s.key?"#0F6E56":"#64748b",boxShadow:sub===s.key?"0 1px 3px rgba(0,0,0,0.1)":"none" }}>{s.label}</button>
+            <button key={s.key} onClick={()=>{ setSub(s.key); setTypeFilter(null); }} style={{ padding:"7px 16px",border:"none",borderRadius:8,fontSize:13,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap",background:sub===s.key?"#fff":"transparent",color:sub===s.key?"#0F6E56":"#64748b",boxShadow:sub===s.key?"0 1px 3px rgba(0,0,0,0.1)":"none" }}>{s.label}</button>
           ))}
         </div>
         <Btn variant="ghost" size="sm" onClick={()=>setShowManual(true)}>+ Manual expense</Btn>
@@ -1417,10 +1421,24 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
       </div>
 
       <div style={{ display:"flex",gap:14,flexWrap:"wrap" }}>
-        <StatCard label="Deductible total"   value={fmt(bizExp)}   sub={bizCount+" transactions"} color="#1e293b"/>
-        <StatCard label="Collections banked" value={fmt(deposits)} sub={practices.length+" practices"} color="#1e293b"/>
-        <StatCard label="Missing receipts"   value={String(missingReceiptCount)} sub="deductibles without documentation" color={missingReceiptCount>0?"#991b1b":"#1e293b"}/>
+        <StatCard label="Deductible total"   value={fmt(bizExp)}   sub={bizCount+" transactions"} color="#1e293b"
+          onClick={()=>{ setSub("deductibles"); setTypeFilter(null); }}/>
+        <StatCard label="Collections banked" value={fmt(deposits)} sub={practices.length+" practices"} color="#1e293b"
+          onClick={()=>{ setSub("feed"); setTypeFilter("collection"); }}/>
+        <StatCard label="Missing receipts"   value={String(missingReceiptCount)} sub="deductibles without documentation" color={missingReceiptCount>0?"#991b1b":"#1e293b"}
+          onClick={()=>{ setSub("deductibles"); setTypeFilter("missingReceipts"); }}/>
       </div>
+
+      {typeFilter&&(
+        <div style={{ display:"flex",alignItems:"center",gap:10,background:"#E1F5EE",border:"1px solid #bbf7d0",borderRadius:10,padding:"10px 16px" }}>
+          <span style={{ fontSize:13,color:"#0F6E56",fontWeight:600 }}>
+            Showing: {typeFilter==="collection"?"Collections only":"Missing receipts only"}
+          </span>
+          <button onClick={()=>{ setTypeFilter(null); setSub("all"); }} style={{ marginLeft:"auto",background:"none",border:"none",color:"#0F6E56",fontSize:13,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:4 }}>
+            ← Back to all
+          </button>
+        </div>
+      )}
 
       {dismissedBanners.length>0&&(
         <div style={{ position:"relative",display:"flex",justifyContent:"flex-end" }}>
@@ -1458,11 +1476,11 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
       {missingReceiptCount>0&&!dismissedBanners.includes("missingReceipts")&&(
         <div style={{ background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"12px 18px",display:"flex",alignItems:"center",gap:10 }}>
           <span>📄</span>
-          <div onClick={()=>setSub("deductibles")} style={{ flex:1,cursor:"pointer" }}>
+          <div onClick={()=>{ setSub("deductibles"); setTypeFilter("missingReceipts"); }} style={{ flex:1,cursor:"pointer" }}>
             <div style={{ fontSize:13,fontWeight:700,color:"#92400e" }}>{missingReceiptCount} deductible transactions missing a receipt</div>
             <div style={{ fontSize:12,color:"#b45309" }}>CRA requires receipts for all business expense claims. Tap to review.</div>
           </div>
-          <span onClick={()=>setSub("deductibles")} style={{ fontSize:12,color:"#92400e",fontWeight:600,whiteSpace:"nowrap",cursor:"pointer" }}>Review →</span>
+          <span onClick={()=>{ setSub("deductibles"); setTypeFilter("missingReceipts"); }} style={{ fontSize:12,color:"#92400e",fontWeight:600,whiteSpace:"nowrap",cursor:"pointer" }}>Review →</span>
           <button onClick={()=>dismissBanner("missingReceipts")} title="Dismiss — find it again under 🔔 hidden" style={{ background:"none",border:"none",color:"#92400e",fontSize:16,cursor:"pointer",padding:4,flexShrink:0 }}>✕</button>
         </div>
       )}
@@ -1530,7 +1548,7 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
 
           {/* Unified transaction list — all transactions, click to expand */}
           <div>
-            {[...filteredBanks].sort((a,b)=>b.date.localeCompare(a.date)).map((b,i)=>{
+            {[...filteredBanks].filter(b=>typeFilter!=="collection"||b.type==="collection").sort((a,b)=>b.date.localeCompare(a.date)).map((b,i)=>{
               const isOpen   = expandedId === b.id;
               const isTagged = b.userTagged || b.autoTagged;
               const pr       = practices.find(p=>p.id===b.practiceId);
@@ -1784,7 +1802,7 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
 
       {/* Deductibles — filtered view of all deductible bank transactions */}
       {(sub==="all"||sub==="deductibles")&&(()=>{
-        const deductible = filteredBanks.filter(b=>deductibleAmount(b)>0);
+        const deductible = filteredBanks.filter(b=>deductibleAmount(b)>0 && (typeFilter!=="missingReceipts"||!b.receipt));
         const total      = deductible.reduce((s,b)=>s+deductibleAmount(b),0);
         const withReceipt  = deductible.filter(b=>b.receipt).length;
         const missingReceipt = deductible.filter(b=>!b.receipt);

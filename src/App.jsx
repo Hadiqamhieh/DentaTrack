@@ -1548,7 +1548,7 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
               <div style={{ display:"flex",gap:8,alignItems:"center",flexWrap:"wrap" }}>
                 <Btn size="sm" variant="secondary" onClick={()=>{ const ids=new Set(filteredBanks.map(x=>x.id)); setBanks(bk=>bk.map(x=>ids.has(x.id)?{...x,reviewed:true}:x)); }}>✓ Mark all reviewed</Btn>
                 <Btn size="sm" variant="ghost" onClick={()=>{ const ids=new Set(filteredBanks.map(x=>x.id)); setBanks(bk=>bk.map(x=>ids.has(x.id)?{...x,reviewed:false}:x)); }}>↩ Mark all unreviewed</Btn>
-                <Btn size="sm" variant={selectMode?"primary":"ghost"} onClick={()=>selectMode?exitSelectMode():setSelectMode(true)}>{selectMode?"Cancel select":"☑ Select"}</Btn>
+                <Btn size="sm" variant={selectMode?"primary":"ghost"} onClick={()=>selectMode?exitSelectMode():setSelectMode(true)}>{selectMode?"✓ Done":"☑ Select"}</Btn>
                 <Badge label="Live sync" color="green"/>
               </div>
             </div>
@@ -1563,7 +1563,7 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
                 </button>
                 <span style={{ fontSize:12,color:"#94a3b8" }}>{selectedIds.size} selected</span>
                 {selectedIds.size>0&&(
-                  <div style={{ display:"flex",gap:8,marginLeft:"auto",flexWrap:"wrap",alignItems:"center" }}>
+                  <div style={{ display:"flex",gap:8,flexWrap:"wrap",alignItems:"center" }}>
                     <Btn size="sm" variant="secondary" onClick={()=>{ setBanks(bk=>bk.map(x=>selectedIds.has(x.id)?{...x,reviewed:true}:x)); }}>✓ Mark reviewed</Btn>
                     <Btn size="sm" variant="ghost" onClick={()=>{ setBanks(bk=>bk.map(x=>selectedIds.has(x.id)?{...x,reviewed:false}:x)); }}>↩ Unmark reviewed</Btn>
                     <Btn size="sm" variant="ghost" onClick={()=>{ setBanks(bk=>bk.map(x=>selectedIds.has(x.id)?{...x,type:"personal",userTagged:true,reviewed:true}:x)); }}>Tag personal</Btn>
@@ -1586,6 +1586,7 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
                     }}>🗑 Delete</Btn>
                   </div>
                 )}
+                <Btn size="sm" onClick={exitSelectMode} style={{ marginLeft:"auto" }}>✓ Done</Btn>
               </div>
             )}
             {/* Color legend */}

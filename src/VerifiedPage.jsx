@@ -1,27 +1,35 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { supabase } from './supabaseClient';
 
 // Confirmation emails link here with ?token_hash=...&type=signup instead of
-// straight to Supabase's own confirm endpoint. That matters: if the link
-// itself verified the token, an email client or security scanner silently
-// pre-visiting the link (very common) would burn the one-time token before
-// the person ever clicks it themselves, and they'd hit "expired" every time.
-// Verifying here, from our own page's JS, means only a real click runs it.
+// straight to Supabase's own confirm endpoint.
+//
+// IMPORTANT: verification only happens on an explicit button click, never
+// automatically on page load. Email providers and corporate security tools
+// (Gmail's link scanning, Outlook Safe Links, Mimecast, etc.) commonly
+// pre-visit links in emails using a real browser to check they're safe —
+// and critically, many of these run the page's JavaScript too, not just
+// the network request. An effect that verifies on mount would get silently
+// triggered by that scan, burning the one-time token before the person
+// ever clicks it — they'd land on "link didn't work" even though the
+// account was already (invisibly) verified. Scanners load and inspect
+// pages; they essentially never click buttons. Gating verification behind
+// a real click is what actually tells a person apart from a scanner.
 export default function VerifiedPage() {
-  const [status, setStatus] = useState('checking'); // checking | success | error
+  const [status, setStatus] = useState('ready'); // ready | checking | success | error
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const token_hash = params.get('token_hash');
-    const type = params.get('type') || 'signup';
+  const params = new URLSearchParams(window.location.search);
+  const token_hash = params.get('token_hash');
+  const type = params.get('type') || 'signup';
 
+  const confirm = () => {
     if (!token_hash) {
       setStatus('error');
       setError('This link is missing some information — try signing up again for a fresh email.');
       return;
     }
-
+    setStatus('checking');
     supabase.auth.verifyOtp({ token_hash, type }).then(({ error }) => {
       if (error) {
         setStatus('error');
@@ -33,11 +41,26 @@ export default function VerifiedPage() {
         supabase.auth.signOut().catch(() => {});
       }
     });
-  }, []);
+  };
 
   return (
     <div style={{ minHeight: '100vh', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui,-apple-system,sans-serif', padding: 20 }}>
       <div style={{ width: '100%', maxWidth: 380, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, padding: 32, textAlign: 'center' }}>
+        {status === 'ready' && (
+          <>
+            <div style={{ fontSize: 44, marginBottom: 14 }}>📬</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: '#1e293b', marginBottom: 8 }}>Confirm your account</div>
+            <div style={{ fontSize: 14, color: '#64748b', lineHeight: 1.5, marginBottom: 22 }}>
+              Tap below to verify your email and finish setting up your account.
+            </div>
+            <button
+              onClick={confirm}
+              style={{ width: '100%', padding: '12px 0', background: '#0F6E56', color: '#fff', border: 'none', borderRadius: 10, fontSize: 15, fontWeight: 700, cursor: 'pointer' }}
+            >
+              Confirm my account
+            </button>
+          </>
+        )}
         {status === 'checking' && (
           <div style={{ fontSize: 14, color: '#94a3b8' }}>Verifying…</div>
         )}

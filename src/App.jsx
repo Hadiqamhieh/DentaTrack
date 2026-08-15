@@ -1479,7 +1479,7 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
       {typeFilter&&(
         <div style={{ display:"flex",alignItems:"center",gap:10,background:"#E1F5EE",border:"1px solid #bbf7d0",borderRadius:10,padding:"10px 16px" }}>
           <span style={{ fontSize:13,color:"#0F6E56",fontWeight:600 }}>
-            Showing: {typeFilter==="collection"?"Collections only":"Missing receipts only"}
+            Showing: {typeFilter==="collection"?"Collections only":typeFilter==="duplicates"?"Possible duplicates only":"Missing receipts only"}
           </span>
           <button onClick={()=>{ setTypeFilter(null); setSub("all"); }} style={{ marginLeft:"auto",background:"none",border:"none",color:"#0F6E56",fontSize:13,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:4 }}>
             ← Back to all
@@ -1512,9 +1512,9 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
       {duplicateCount>0&&!dismissedBanners.includes("duplicates")&&(
         <div style={{ background:"#fef2f2",border:"1px solid #fecaca",borderRadius:10,padding:"12px 18px",display:"flex",alignItems:"center",gap:10 }}>
           <span>⚠️</span>
-          <div style={{ flex:1 }}>
+          <div onClick={()=>{ setSub("feed"); setTypeFilter("duplicates"); }} style={{ flex:1,cursor:"pointer" }}>
             <div style={{ fontSize:13,fontWeight:700,color:"#991b1b" }}>{duplicateCount} transactions look like possible duplicates</div>
-            <div style={{ fontSize:12,color:"#b91c1c" }}>Same amount, same day (±1) as another transaction. Marked with ⚠ below — review before counting both.</div>
+            <div style={{ fontSize:12,color:"#b91c1c" }}>Same amount, same day (±1) as another transaction. Marked with ⚠ below — review before counting both. Tap to view them.</div>
           </div>
           <button onClick={()=>dismissBanner("duplicates")} title="Dismiss — find it again under 🔔 hidden" style={{ background:"none",border:"none",color:"#991b1b",fontSize:16,cursor:"pointer",padding:4,flexShrink:0 }}>✕</button>
         </div>
@@ -1608,7 +1608,7 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
 
           {/* Unified transaction list — all transactions, click to expand */}
           <div>
-            {[...filteredBanks].filter(b=>typeFilter!=="collection"||b.type==="collection").sort((a,b)=>b.date.localeCompare(a.date)).map((b,i)=>{
+            {[...filteredBanks].filter(b=>(typeFilter!=="collection"||b.type==="collection")&&(typeFilter!=="duplicates"||duplicateIds?.has(b.id))).sort((a,b)=>b.date.localeCompare(a.date)).map((b,i)=>{
               const isOpen   = expandedId === b.id;
               const isTagged = b.userTagged || b.autoTagged;
               const pr       = practices.find(p=>p.id===b.practiceId);

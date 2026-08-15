@@ -78,7 +78,10 @@ export default function VerifiedPage() {
           <>
             <div style={{ fontSize: 44, marginBottom: 14 }}>⚠️</div>
             <div style={{ fontSize: 20, fontWeight: 800, color: '#1e293b', marginBottom: 8 }}>Link didn't work</div>
-            <div style={{ fontSize: 14, color: '#64748b', lineHeight: 1.5 }}>{error}</div>
+            <div style={{ fontSize: 14, color: '#64748b', lineHeight: 1.5, marginBottom: 18 }}>{error}</div>
+            <div style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.5, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 14px' }}>
+              This can happen if your email provider's security scanner already opened the link on its own before you clicked it — in that case your account may actually already be verified. Try going back and signing in before requesting a new email.
+            </div>
           </>
         )}
       </div>

@@ -6,9 +6,12 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      // autoUpdate: new deploys roll out to users automatically in the
-      // background — no manual cache-clearing needed, same as the web app.
-      registerType: 'autoUpdate',
+      // 'prompt' instead of 'autoUpdate' — autoUpdate reloads silently in
+      // the background on its own schedule, which is exactly what let a
+      // stale cached bundle keep running past a real deploy. 'prompt' lets
+      // us detect a new version is ready and show a visible banner, so an
+      // update is never invisible again.
+      registerType: 'prompt',
       includeAssets: ['icons/apple-touch-icon.png'],
       manifest: {
         name: 'DentaTrack',
@@ -26,9 +29,6 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // Never cache API calls (Plaid, email, scan, auth) — those must
-        // always hit the network fresh. Only static assets get cached for
-        // offline/fast reloads.
         navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
           {

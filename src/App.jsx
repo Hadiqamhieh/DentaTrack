@@ -2869,6 +2869,12 @@ export default function App() {
   const [dataLoaded, setDataLoaded] = useState(false);
   const isMobile = useIsMobile();
   const isStandalone = useIsStandalone();
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  useEffect(() => {
+    const flag = () => setUpdateAvailable(true);
+    window.addEventListener("dt-update-available", flag);
+    return () => window.removeEventListener("dt-update-available", flag);
+  }, []);
 
   const [production, setProduction] = useState([]);
   const [expenses, setExpenses]     = useState([]);
@@ -3085,6 +3091,16 @@ export default function App() {
   return(
     <div className="dt-app" style={{ minHeight:"100vh",background:"#f8fafc",fontFamily:"system-ui,-apple-system,sans-serif",paddingBottom:isMobile?90:0 }} onClick={()=>menuOpen&&setMenuOpen(false)}>
       <GlobalStyles />
+
+      {/* New deploy ready — shown until tapped, never applied silently. */}
+      {updateAvailable&&(
+        <div style={{ position:"fixed",top:0,left:0,right:0,zIndex:400,background:"#0F6E56",color:"#fff",padding:"10px 16px",display:"flex",alignItems:"center",justifyContent:"center",gap:12,flexWrap:"wrap",fontSize:13,fontWeight:600 }}>
+          <span>🔄 A new version of DentaTrack is available</span>
+          <button onClick={()=>window.__dtApplyUpdate?.()} style={{ background:"#fff",color:"#0F6E56",border:"none",borderRadius:8,padding:"5px 14px",fontSize:12,fontWeight:700,cursor:"pointer" }}>
+            Update now
+          </button>
+        </div>
+      )}
 
       {/* Pull-to-refresh indicator */}
       {isStandalone&&pullDist>0&&!refreshing&&!refreshDone&&(

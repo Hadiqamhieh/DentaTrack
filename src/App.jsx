@@ -553,13 +553,20 @@ const LogModal = ({ practices, onSave, onClose }) => {
   const [label, setLabel] = useState("");       // defaults to date, editable
   const [labelTouched, setLabelTouched] = useState(false); // has the user typed their own name?
   const [receiptImg, setReceiptImg] = useState(null);
+  // A redo/remake — redoing a prior procedure, usually at no charge to the
+  // patient (warranty work, a lab remake, correcting a failed restoration).
+  // Tracked separately since it's still worth logging for your own records,
+  // but it isn't new revenue-generating work the way the rest of your
+  // production is.
+  const [isRedo, setIsRedo] = useState(false);
+  const [redoNotes, setRedoNotes] = useState("");
 
   const practice = practices.find(p=>p.id===practiceId);
   const tracksLab = !!practice?.deductsLabFees;
 
   const save = () => {
     if(!amount||!practiceId) return;
-    onSave({ date, practiceId, production:+amount, labFees:+(labFees||0), source: receiptImg?"daysheet":"manual", label: label||date, receipt: receiptImg });
+    onSave({ date, practiceId, production:+amount, labFees:+(labFees||0), source: receiptImg?"daysheet":"manual", label: label||date, receipt: receiptImg, isRedo, redoNotes: isRedo ? redoNotes : "" });
     onClose();
   };
 
@@ -600,6 +607,15 @@ const LogModal = ({ practices, onSave, onClose }) => {
               <Input label="Total production today ($)" type="number" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0" autoFocus />
               {tracksLab&&(
                 <Input label="Lab fees today ($, if any)" type="number" value={labFees} onChange={e=>setLabFees(e.target.value)} placeholder="0" />
+              )}
+              <label style={{ display:"flex",alignItems:"flex-start",gap:8,cursor:"pointer" }}>
+                <input type="checkbox" checked={isRedo} onChange={e=>setIsRedo(e.target.checked)} style={{ marginTop:3 }} />
+                <span style={{ fontSize:13,color:"#1e293b" }}>
+                  This includes a redo <span style={{ color:"#94a3b8",fontWeight:400 }}>— redoing or remaking a prior procedure, usually at no charge to the patient</span>
+                </span>
+              </label>
+              {isRedo&&(
+                <Input label="What's being redone (optional)" value={redoNotes} onChange={e=>setRedoNotes(e.target.value)} placeholder="e.g. crown remake, tooth #14" />
               )}
               <Btn size="lg" onClick={save} style={{ justifyContent:"center", marginTop:6 }}>Save</Btn>
             </>
@@ -903,6 +919,15 @@ const EditProductionModal = ({ entry, practices, onSave, onClose }) => {
           <Input label="Total production ($)" type="number" value={form.production} onChange={e=>setForm(f=>({...f,production:+e.target.value}))} />
           {pr?.deductsLabFees&&(
             <Input label="Lab fees ($)" type="number" value={form.labFees||0} onChange={e=>setForm(f=>({...f,labFees:+e.target.value}))} />
+          )}
+          <label style={{ display:"flex",alignItems:"flex-start",gap:8,cursor:"pointer" }}>
+            <input type="checkbox" checked={!!form.isRedo} onChange={e=>setForm(f=>({...f,isRedo:e.target.checked}))} style={{ marginTop:3 }} />
+            <span style={{ fontSize:13,color:"#1e293b" }}>
+              This includes a redo <span style={{ color:"#94a3b8",fontWeight:400 }}>— redoing or remaking a prior procedure, usually at no charge to the patient</span>
+            </span>
+          </label>
+          {form.isRedo&&(
+            <Input label="What's being redone (optional)" value={form.redoNotes||""} onChange={e=>setForm(f=>({...f,redoNotes:e.target.value}))} placeholder="e.g. crown remake, tooth #14" />
           )}
           {form.receipt&&(
             <div>
@@ -1222,7 +1247,14 @@ const ProductionTab = ({ production, setProduction, practices, filterPeriod }) =
       <Card style={{ padding:0,overflow:"hidden" }}>
         <div style={{ padding:"14px 20px",borderBottom:"1px solid #f1f5f9",display:"flex",justifyContent:"space-between",alignItems:"center" }}>
           <div style={{ fontSize:14,fontWeight:600,color:"#1e293b" }}>Production log</div>
-          <div style={{ fontSize:12,color:"#94a3b8" }}>{production.length} entries this {(PERIOD_LABELS[filterPeriod]||"Month").toLowerCase()}</div>
+          <div style={{ fontSize:12,color:"#94a3b8",textAlign:"right" }}>
+            {production.length} entries this {(PERIOD_LABELS[filterPeriod]||"Month").toLowerCase()}
+            {production.some(e=>e.isRedo) && (
+              <div style={{ marginTop:2 }}>
+                includes {fmt(production.filter(e=>e.isRedo).reduce((s,e)=>s+e.production,0))} in redos — not separated out of production below yet
+              </div>
+            )}
+          </div>
         </div>
         {production.length===0 ? (
           <div style={{ padding:"40px 20px",textAlign:"center",color:"#94a3b8",fontSize:13 }}>
@@ -1242,7 +1274,9 @@ const ProductionTab = ({ production, setProduction, practices, filterPeriod }) =
                   <span style={{ fontSize:12,color:"#64748b",whiteSpace:"nowrap" }}>{pr?.name||"—"}</span>
                   {entry.labFees>0&&<span style={{ fontSize:11,color:"#92400e",background:"#fef3c7",padding:"1px 6px",borderRadius:99,whiteSpace:"nowrap" }}>Lab: {fmt(entry.labFees)}</span>}
                   <Badge label={entry.source==="daysheet"?"📋 Day sheet":"Manual"} color={entry.source==="daysheet"?"teal":"gray"} />
+                  {entry.isRedo&&<Badge label="🔁 Redo" color="amber" />}
                 </div>
+                {entry.isRedo&&entry.redoNotes&&<div style={{ fontSize:12,color:"#92400e",fontStyle:"italic" }}>Redo: {entry.redoNotes}</div>}
                 <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap" }}>
                   <div style={{ fontSize:16,fontWeight:700,color:"#1e293b",whiteSpace:"nowrap" }}>{fmt(entry.production)}</div>
                   <div style={{ display:"flex",gap:6,flexShrink:0,flexWrap:"wrap" }}>

@@ -2883,6 +2883,11 @@ export default function App() {
   const [practices, setPractices]   = useState([]);
   const [agreement, setAgreement]   = useState({ isCorp:false,salary:0,dividends:0,name:"",corpName:"",tourCompleted:true });
   const [connectedAccounts, setConnectedAccounts] = useState([]);
+  // Bumped on every connectedAccounts change so an in-flight save from an
+  // older, stale snapshot can tell it's been superseded and skip its own
+  // delete step — otherwise a slow older save finishing after a newer one
+  // can wipe out a bank connection the newer save just wrote.
+  const connectedAccountsSaveSeq = useRef(0);
   const [menuOpen, setMenuOpen]     = useState(false);
   // Lifted out of TransactionsTab so Home's stat cards can deep-link into a
   // specific filtered view instead of just switching to a blank tab.
@@ -3011,7 +3016,11 @@ export default function App() {
   useEffect(() => { if (dataLoaded && userId) syncExpenses(userId, expenses); }, [expenses, dataLoaded, userId]);
   useEffect(() => { if (dataLoaded && userId) syncBanks(userId, banks); }, [banks, dataLoaded, userId]);
   useEffect(() => { if (dataLoaded && userId) syncBankRules(userId, bankRules); }, [bankRules, dataLoaded, userId]);
-  useEffect(() => { if (dataLoaded && userId) syncConnectedAccounts(userId, connectedAccounts); }, [connectedAccounts, dataLoaded, userId]);
+  useEffect(() => {
+    if (!dataLoaded || !userId) return;
+    const seq = ++connectedAccountsSaveSeq.current;
+    syncConnectedAccounts(userId, connectedAccounts, () => connectedAccountsSaveSeq.current === seq);
+  }, [connectedAccounts, dataLoaded, userId]);
   useEffect(() => { if (dataLoaded && userId) saveProfile(userId, agreement); }, [agreement, dataLoaded, userId]);
 
   // Tag a transaction and optionally create a rule

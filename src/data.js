@@ -20,11 +20,20 @@ export function normalizeIds(rows) {
 // Upserts every row currently in local state, then deletes any row still in
 // the database for this user that's no longer present locally (covers
 // deletes made in the UI). Simple full-sync approach — fine at beta scale.
-async function replaceAll(table, userId, rows) {
+//
+// isCurrent (optional) lets a caller detect when a newer save has been
+// kicked off since this one started — if several saves for the same table
+// overlap (e.g. rapid-fire state changes) and finish out of order, an older
+// call's view of "what should exist" is stale. The upsert above is still
+// safe to run even when stale (worst case it rewrites old data), but the
+// delete below is destructive: run from an outdated snapshot, it can erase
+// rows a newer, still-in-flight save just wrote. Skip it when superseded.
+async function replaceAll(table, userId, rows, isCurrent) {
   if (rows.length > 0) {
     const { error } = await supabase.from(table).upsert(rows);
     if (error) console.error(`${table} upsert failed:`, error.message);
   }
+  if (isCurrent && !isCurrent()) return;
   let del = supabase.from(table).delete().eq('user_id', userId);
   if (rows.length > 0) {
     del = del.not('id', 'in', `(${rows.map((r) => r.id).join(',')})`);
@@ -184,11 +193,11 @@ export async function loadConnectedAccounts(userId) {
   }));
 }
 
-export async function syncConnectedAccounts(userId, accounts) {
+export async function syncConnectedAccounts(userId, accounts, isCurrent) {
   const rows = accounts.map((a) => ({
     id: a.id, user_id: userId, name: a.name, mask: a.mask, type: a.type, institution: a.institution,
     label: a.label, last_sync: a.lastSync, connected: a.connected,
     plaid_item_id: a.plaidItemId || null, plaid_account_id: a.plaidAccountId || null,
   }));
-  await replaceAll('connected_accounts', userId, rows);
+  await replaceAll('connected_accounts', userId, rows, isCurrent);
 }

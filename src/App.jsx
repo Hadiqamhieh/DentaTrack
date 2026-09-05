@@ -348,6 +348,29 @@ const Badge = ({ label, color="teal" }) => {
   const s = map[color]||map.gray;
   return <span style={{ background:s.bg, color:s.text, padding:"2px 8px", borderRadius:99, fontSize:11, fontWeight:600, letterSpacing:"0.03em", whiteSpace:"nowrap" }}>{label}</span>;
 };
+// A deliberate, tappable toggle for a real choice in a form — used where a
+// plain checkbox would read as an easy-to-miss afterthought rather than an
+// actual decision the person is making (e.g. flagging a redo).
+const ToggleRow = ({ checked, onChange, icon, label, sub }) => (
+  <button type="button" onClick={()=>onChange(!checked)} style={{
+    display:"flex", alignItems:"center", justifyContent:"space-between", gap:12,
+    width:"100%", textAlign:"left", cursor:"pointer", font:"inherit",
+    background: checked ? "#fef3c7" : "#f8fafc",
+    border: "1px solid " + (checked ? "#fde68a" : "#e2e8f0"),
+    borderRadius: 10, padding: "12px 14px",
+  }}>
+    <div style={{ display:"flex", gap:10, alignItems:"flex-start" }}>
+      {icon&&<span style={{ fontSize:18,lineHeight:"20px" }}>{icon}</span>}
+      <div>
+        <div style={{ fontSize:13,fontWeight:700,color:"#1e293b" }}>{label}</div>
+        {sub&&<div style={{ fontSize:12,color:"#64748b",marginTop:2 }}>{sub}</div>}
+      </div>
+    </div>
+    <span style={{ width:38,height:22,borderRadius:99,flexShrink:0,position:"relative",background: checked?"#0F6E56":"#cbd5e1",transition:"background 0.15s" }}>
+      <span style={{ position:"absolute",top:2,left: checked?18:2,width:18,height:18,borderRadius:"50%",background:"#fff",transition:"left 0.15s",boxShadow:"0 1px 2px rgba(0,0,0,0.2)" }} />
+    </span>
+  </button>
+);
 const PracticeDot = ({ color, name }) => (
   <span style={{ display:"inline-flex", alignItems:"center", gap:5 }}>
     <span style={{ width:8, height:8, borderRadius:"50%", background:color, flexShrink:0 }} />
@@ -608,12 +631,8 @@ const LogModal = ({ practices, onSave, onClose }) => {
               {tracksLab&&(
                 <Input label="Lab fees today ($, if any)" type="number" value={labFees} onChange={e=>setLabFees(e.target.value)} placeholder="0" />
               )}
-              <label style={{ display:"flex",alignItems:"flex-start",gap:8,cursor:"pointer" }}>
-                <input type="checkbox" checked={isRedo} onChange={e=>setIsRedo(e.target.checked)} style={{ marginTop:3 }} />
-                <span style={{ fontSize:13,color:"#1e293b" }}>
-                  This includes a redo <span style={{ color:"#94a3b8",fontWeight:400 }}>— redoing or remaking a prior procedure, usually at no charge to the patient</span>
-                </span>
-              </label>
+              <ToggleRow checked={isRedo} onChange={setIsRedo} icon="🔁" label="This includes a redo"
+                sub="Redoing or remaking a prior procedure, usually at no charge to the patient" />
               {isRedo&&(
                 <Input label="What's being redone (optional)" value={redoNotes} onChange={e=>setRedoNotes(e.target.value)} placeholder="e.g. crown remake, tooth #14" />
               )}
@@ -920,12 +939,8 @@ const EditProductionModal = ({ entry, practices, onSave, onClose }) => {
           {pr?.deductsLabFees&&(
             <Input label="Lab fees ($)" type="number" value={form.labFees||0} onChange={e=>setForm(f=>({...f,labFees:+e.target.value}))} />
           )}
-          <label style={{ display:"flex",alignItems:"flex-start",gap:8,cursor:"pointer" }}>
-            <input type="checkbox" checked={!!form.isRedo} onChange={e=>setForm(f=>({...f,isRedo:e.target.checked}))} style={{ marginTop:3 }} />
-            <span style={{ fontSize:13,color:"#1e293b" }}>
-              This includes a redo <span style={{ color:"#94a3b8",fontWeight:400 }}>— redoing or remaking a prior procedure, usually at no charge to the patient</span>
-            </span>
-          </label>
+          <ToggleRow checked={!!form.isRedo} onChange={v=>setForm(f=>({...f,isRedo:v}))} icon="🔁" label="This includes a redo"
+            sub="Redoing or remaking a prior procedure, usually at no charge to the patient" />
           {form.isRedo&&(
             <Input label="What's being redone (optional)" value={form.redoNotes||""} onChange={e=>setForm(f=>({...f,redoNotes:e.target.value}))} placeholder="e.g. crown remake, tooth #14" />
           )}

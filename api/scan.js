@@ -153,6 +153,10 @@ export default async function handler(req, res) {
 
   const openRouterKey = process.env.OPENROUTER_API_KEY;
   const geminiKey = process.env.GEMINI_API_KEY;
+  // Temporary diagnostic — confirms whether Vercel is actually handing this
+  // function the env var at all, independent of everything downstream.
+  // Never logs the actual value, only presence/length.
+  console.log(`[scan:env-check] OPENROUTER_API_KEY present=${!!openRouterKey} length=${(openRouterKey||'').length} GEMINI_API_KEY present=${!!geminiKey}`);
   if (!openRouterKey && !geminiKey) {
     return res.status(500).json({ error: "Scanning is not configured on this deployment yet." });
   }

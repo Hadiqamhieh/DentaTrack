@@ -1,8 +1,16 @@
-// Powers receipt and day-sheet scanning. Tries OpenRouter first — running
-// Qwen2.5-VL, a vision model specifically strong at reading dense documents
-// like receipts and day sheets — and falls back to Gemini if OpenRouter is
-// rate-limited, errors, or comes back empty. Both are free tiers with no
+// Powers receipt and day-sheet scanning. Tries a short list of free vision
+// models on OpenRouter first, then falls back to Gemini if all of them are
+// rate-limited, errored, or came back empty. Both are free tiers with no
 // credit card required.
+//
+// OpenRouter's free-model lineup rotates without warning — one hardcoded
+// model name already vanished from their catalog in production, which is
+// exactly why this tries several in order instead of pinning one. Override
+// with OPENROUTER_MODELS (comma-separated, tried in order) if this list
+// goes stale again; check current free models at
+// https://openrouter.ai/api/v1/models (no auth required) before picking new
+// ones — filter for entries ending in ":free" with "image" in
+// architecture.input_modalities.
 //
 // If OPENROUTER_API_KEY isn't set yet, this skips straight to Gemini —
 // today's exact behavior — so it's safe to deploy before that env var
@@ -13,7 +21,8 @@
 // ReceiptScanner didn't need any changes at all.
 
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-flash-latest';
-const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || 'qwen/qwen2.5-vl-72b-instruct:free';
+const OPENROUTER_MODELS = (process.env.OPENROUTER_MODELS || 'google/gemma-4-31b-it:free,minimax/minimax-m3:free')
+  .split(',').map(m => m.trim()).filter(Boolean);
 
 async function callGemini(apiKey, { imageBase64, mimeType, prompt }, label) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
@@ -64,10 +73,8 @@ async function callGemini(apiKey, { imageBase64, mimeType, prompt }, label) {
   return { text, finishReason };
 }
 
-// OpenRouter's OpenAI-compatible chat completions endpoint. Qwen2.5-VL is
-// specifically strong at document/receipt OCR — a real quality upgrade over
-// Gemini Flash for this task, not just a rate-limit workaround.
-async function callOpenRouter(apiKey, { imageBase64, mimeType, prompt }, label) {
+// OpenRouter's OpenAI-compatible chat completions endpoint.
+async function callOpenRouter(apiKey, model, { imageBase64, mimeType, prompt }, label) {
   const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -75,7 +82,7 @@ async function callOpenRouter(apiKey, { imageBase64, mimeType, prompt }, label) 
       'Authorization': `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: OPENROUTER_MODEL,
+      model,
       temperature: 0,
       response_format: { type: 'json_object' },
       messages: [{
@@ -157,16 +164,23 @@ export default async function handler(req, res) {
   const args = { imageBase64, mimeType, prompt };
 
   if (openRouterKey) {
-    try {
-      const result = await attemptWithRetry(callOpenRouter, openRouterKey, args, 'openrouter');
-      if (!result.stillEmpty) {
-        console.log('[scan] served by openrouter');
-        return res.status(200).json({ text: result.text });
+    // One attempt per candidate model rather than a full retry-per-model —
+    // several free models rotating in and out is common enough that trying
+    // each once and moving on beats burning the daily quota retrying a model
+    // that's simply gone.
+    for (const model of OPENROUTER_MODELS) {
+      try {
+        const result = await callOpenRouter(openRouterKey, model, args, `openrouter:${model}`);
+        if (!looksEmpty(result.text)) {
+          console.log(`[scan] served by openrouter (${model})`);
+          return res.status(200).json({ text: result.text });
+        }
+        console.log(`[scan] openrouter (${model}) came back empty, trying next option`);
+      } catch (err) {
+        console.log(`[scan] openrouter (${model}) failed (${err.message}), trying next option`);
       }
-      console.log(`[scan] openrouter exhausted both attempts (finishReason=${result.finishReason}), falling back${geminiKey ? ' to gemini' : ' — no gemini key configured'}`);
-    } catch (err) {
-      console.log(`[scan] openrouter failed (${err.message}), falling back${geminiKey ? ' to gemini' : ' — no gemini key configured'}`);
     }
+    console.log(`[scan] all openrouter models exhausted, falling back${geminiKey ? ' to gemini' : ' — no gemini key configured'}`);
   }
 
   if (!geminiKey) {

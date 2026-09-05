@@ -371,6 +371,135 @@ const ToggleRow = ({ checked, onChange, icon, label, sub }) => (
     </span>
   </button>
 );
+// A row-based line-item input, used by the procedure breakdown below. Not
+// the shared <Input> component — these rows are compact and side-by-side.
+const lineInputStyle = { padding:"8px 10px", border:"1px solid #e2e8f0", borderRadius:8, fontSize:13, color:"#1e293b", background:"#fff", outline:"none" };
+
+// A practical reference of commonly-logged dental procedures, for
+// autocomplete convenience — NOT the official ADA CDT code set, which is
+// copyrighted and licensed separately, so this can't be a complete or
+// authoritative lookup. Typing anything not on this list still works fine;
+// it's just kept as free text with no code auto-filled.
+const COMMON_PROCEDURES = [
+  { code:"D0120", description:"Periodic oral evaluation" },
+  { code:"D0150", description:"Comprehensive oral evaluation" },
+  { code:"D0210", description:"Intraoral complete series X-rays" },
+  { code:"D0220", description:"Periapical X-ray, first image" },
+  { code:"D0230", description:"Periapical X-ray, each additional image" },
+  { code:"D0270", description:"Bitewing X-ray, single image" },
+  { code:"D0272", description:"Bitewing X-rays, two images" },
+  { code:"D0330", description:"Panoramic X-ray" },
+  { code:"D1110", description:"Prophylaxis (cleaning) — adult" },
+  { code:"D1120", description:"Prophylaxis (cleaning) — child" },
+  { code:"D1206", description:"Topical fluoride varnish" },
+  { code:"D1351", description:"Sealant, per tooth" },
+  { code:"D2140", description:"Amalgam filling — one surface" },
+  { code:"D2150", description:"Amalgam filling — two surfaces" },
+  { code:"D2160", description:"Amalgam filling — three surfaces" },
+  { code:"D2161", description:"Amalgam filling — four+ surfaces" },
+  { code:"D2330", description:"Resin (composite) filling — one surface, anterior" },
+  { code:"D2331", description:"Resin filling — two surfaces, anterior" },
+  { code:"D2332", description:"Resin filling — three surfaces, anterior" },
+  { code:"D2391", description:"Resin filling — one surface, posterior" },
+  { code:"D2392", description:"Resin filling — two surfaces, posterior" },
+  { code:"D2393", description:"Resin filling — three surfaces, posterior" },
+  { code:"D2394", description:"Resin filling — four+ surfaces, posterior" },
+  { code:"D2740", description:"Crown — porcelain/ceramic" },
+  { code:"D2750", description:"Crown — porcelain fused to high noble metal" },
+  { code:"D2790", description:"Crown — full cast high noble metal" },
+  { code:"D2950", description:"Core buildup, including pins" },
+  { code:"D2954", description:"Prefabricated post and core" },
+  { code:"D3220", description:"Pulpotomy" },
+  { code:"D3310", description:"Root canal — anterior tooth" },
+  { code:"D3320", description:"Root canal — premolar tooth" },
+  { code:"D3330", description:"Root canal — molar tooth" },
+  { code:"D4341", description:"Scaling and root planing, per quadrant (4+ teeth)" },
+  { code:"D4342", description:"Scaling and root planing, per quadrant (1–3 teeth)" },
+  { code:"D4910", description:"Periodontal maintenance" },
+  { code:"D5110", description:"Complete upper denture" },
+  { code:"D5120", description:"Complete lower denture" },
+  { code:"D5213", description:"Partial upper denture, cast metal framework" },
+  { code:"D5214", description:"Partial lower denture, cast metal framework" },
+  { code:"D6010", description:"Surgical placement of implant" },
+  { code:"D6058", description:"Implant-supported crown — porcelain/ceramic" },
+  { code:"D6240", description:"Pontic — porcelain fused to high noble metal" },
+  { code:"D6740", description:"Retainer crown — porcelain/ceramic" },
+  { code:"D7140", description:"Extraction, erupted tooth" },
+  { code:"D7210", description:"Surgical extraction, erupted tooth" },
+  { code:"D7220", description:"Extraction, impacted tooth — soft tissue" },
+  { code:"D7230", description:"Extraction, impacted tooth — partially bony" },
+  { code:"D7240", description:"Extraction, impacted tooth — fully bony" },
+  { code:"D9110", description:"Emergency treatment for pain relief" },
+  { code:"D9223", description:"Deep sedation/general anesthesia, each 15-min increment" },
+  { code:"D9944", description:"Occlusal night guard" },
+];
+
+function matchProcedures(query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  return COMMON_PROCEDURES.filter(p =>
+    p.code.toLowerCase().startsWith(q) || p.description.toLowerCase().includes(q)
+  ).slice(0, 6);
+}
+
+// One procedure line — a single smart field that searches COMMON_PROCEDURES
+// as you type, by code prefix or plain-English name. Picking a suggestion
+// fills in both the code and description; typing something not on the list
+// just keeps it as free text, code left blank.
+const ProcedureLineRow = ({ line, onUpdate, onRemove }) => {
+  const [focused, setFocused] = useState(false);
+  const query = line.description || line.code || "";
+  const suggestions = focused ? matchProcedures(query) : [];
+  const selectSuggestion = (s) => {
+    onUpdate(line.id, "code", s.code);
+    onUpdate(line.id, "description", s.description);
+    setFocused(false);
+  };
+  return (
+    <div style={{ position:"relative" }}>
+      <div style={{ display:"flex",gap:6,alignItems:"center" }}>
+        <input
+          value={query}
+          onChange={e=>{ onUpdate(line.id,"description",e.target.value); onUpdate(line.id,"code",""); }}
+          onFocus={()=>setFocused(true)}
+          onBlur={()=>setTimeout(()=>setFocused(false),150)}
+          placeholder="Type a code or procedure name (e.g. D2740 or crown)"
+          style={{ ...lineInputStyle, flex:1, minWidth:0 }}
+        />
+        <input type="number" value={line.fee} onChange={e=>onUpdate(line.id,"fee",e.target.value)} placeholder="Fee" style={{ ...lineInputStyle, width:76 }} />
+        <button type="button" onClick={()=>onRemove(line.id)} title="Remove this line" style={{ background:"none",border:"none",color:"#94a3b8",cursor:"pointer",fontSize:16,padding:"0 4px",flexShrink:0 }}>✕</button>
+      </div>
+      {line.code&&<div style={{ fontSize:11,color:"#0F6E56",marginTop:2 }}>✓ matched to {line.code}</div>}
+      {suggestions.length>0&&(
+        <div style={{ position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,boxShadow:"0 4px 12px rgba(0,0,0,0.12)",zIndex:10,marginTop:2,overflow:"hidden" }}>
+          {suggestions.map(s=>(
+            <button key={s.code} type="button" onMouseDown={()=>selectSuggestion(s)}
+              style={{ display:"block",width:"100%",textAlign:"left",padding:"8px 10px",border:"none",borderBottom:"1px solid #f8fafc",background:"none",cursor:"pointer",fontSize:12,color:"#1e293b" }}>
+              <strong>{s.code}</strong> — {s.description}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Optional multi-line procedure breakdown for a production entry. When any
+// lines exist, the caller uses their summed fee as the entry's total
+// instead of a manual amount.
+const ProcedureLinesEditor = ({ lines, onAdd, onUpdate, onRemove, total }) => (
+  <div style={{ display:"flex",flexDirection:"column",gap:14 }}>
+    <div style={{ fontSize:12,fontWeight:500,color:"#475569" }}>Procedures</div>
+    {lines.map((line)=>(
+      <ProcedureLineRow key={line.id} line={line} onUpdate={onUpdate} onRemove={onRemove} />
+    ))}
+    <button type="button" onClick={onAdd} style={{ display:"flex",alignItems:"center",gap:6,background:"none",border:"1px dashed #cbd5e1",borderRadius:8,padding:"8px 10px",fontSize:12,fontWeight:600,color:"#0F6E56",cursor:"pointer",width:"fit-content" }}>+ Add procedure</button>
+    <div style={{ fontSize:11,color:"#94a3b8" }}>Describe the procedure, not the patient — leave out names or other identifying details.</div>
+    <div style={{ display:"flex",justifyContent:"space-between",fontSize:13,fontWeight:700,color:"#1e293b",paddingTop:8,borderTop:"1px solid #f1f5f9" }}>
+      <span>Total production</span><span>{fmt(total)}</span>
+    </div>
+  </div>
+);
 const PracticeDot = ({ color, name }) => (
   <span style={{ display:"inline-flex", alignItems:"center", gap:5 }}>
     <span style={{ width:8, height:8, borderRadius:"50%", background:color, flexShrink:0 }} />
@@ -583,13 +712,27 @@ const LogModal = ({ practices, onSave, onClose }) => {
   // production is.
   const [isRedo, setIsRedo] = useState(false);
   const [redoNotes, setRedoNotes] = useState("");
+  // Optional per-procedure breakdown (e.g. CDT codes in the US, provincial
+  // fee-guide codes in Canada) — free-text code, since the official ADA CDT
+  // code set is copyrighted and can't be embedded as a lookup here. When
+  // any lines exist, they replace the single manual total below.
+  const [procedures, setProcedures] = useState([]);
+  const proceduresTotal = procedures.reduce((s,p)=>s+(+p.fee||0),0);
+  const addProcedureLine = () => setProcedures(p=>[...p, { id: newId(), code:"", description:"", fee:"" }]);
+  const updateProcedureLine = (id, field, value) => setProcedures(p=>p.map(x=>x.id===id?{...x,[field]:value}:x));
+  const removeProcedureLine = (id) => setProcedures(p=>p.filter(x=>x.id!==id));
 
   const practice = practices.find(p=>p.id===practiceId);
   const tracksLab = !!practice?.deductsLabFees;
 
   const save = () => {
-    if(!amount||!practiceId) return;
-    onSave({ date, practiceId, production:+amount, labFees:+(labFees||0), source: receiptImg?"daysheet":"manual", label: label||date, receipt: receiptImg, isRedo, redoNotes: isRedo ? redoNotes : "" });
+    const total = procedures.length ? proceduresTotal : +amount;
+    if(!total||!practiceId) return;
+    onSave({
+      date, practiceId, production: total, labFees:+(labFees||0), source: receiptImg?"daysheet":"manual", label: label||date, receipt: receiptImg,
+      isRedo, redoNotes: isRedo ? redoNotes : "",
+      procedures: procedures.length ? procedures.map(p=>({ code:p.code, description:p.description, fee:+p.fee||0 })) : [],
+    });
     onClose();
   };
 
@@ -627,7 +770,14 @@ const LogModal = ({ practices, onSave, onClose }) => {
           {mode==="manual" ? (
             <>
               <button onClick={()=>setShowScan(true)} style={{ display:"flex",alignItems:"center",gap:6,background:"none",border:"1px dashed #cbd5e1",borderRadius:8,padding:"8px 10px",fontSize:12,fontWeight:600,color:"#0F6E56",cursor:"pointer",width:"fit-content" }}>📷 Scan day sheet to autofill</button>
-              <Input label="Total production today ($)" type="number" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0" autoFocus />
+              {procedures.length===0 ? (
+                <>
+                  <Input label="Total production today ($)" type="number" value={amount} onChange={e=>setAmount(e.target.value)} placeholder="0" autoFocus />
+                  <button type="button" onClick={addProcedureLine} style={{ display:"flex",alignItems:"center",gap:6,background:"none",border:"1px dashed #cbd5e1",borderRadius:8,padding:"8px 10px",fontSize:12,fontWeight:600,color:"#0F6E56",cursor:"pointer",width:"fit-content" }}>+ Break down by procedure (optional)</button>
+                </>
+              ) : (
+                <ProcedureLinesEditor lines={procedures} onAdd={addProcedureLine} onUpdate={updateProcedureLine} onRemove={removeProcedureLine} total={proceduresTotal} />
+              )}
               {tracksLab&&(
                 <Input label="Lab fees today ($, if any)" type="number" value={labFees} onChange={e=>setLabFees(e.target.value)} placeholder="0" />
               )}
@@ -921,9 +1071,21 @@ const EmailReportModal = ({ agreement, period, expectedPay, totalExp, net, pract
 
 // ── Home Tab ──────────────────────────────────────────────────────────────────
 const EditProductionModal = ({ entry, practices, onSave, onClose }) => {
-  const [form, setForm] = useState({ ...entry });
+  const [form, setForm] = useState({ ...entry, procedures: (entry.procedures||[]).map(p=>({ id:newId(), ...p })) });
   const [viewingReceipt, setViewingReceipt] = useState(false);
   const pr = practices.find(p=>p.id===form.practiceId);
+  const proceduresTotal = (form.procedures||[]).reduce((s,p)=>s+(+p.fee||0),0);
+  const addProcedureLine = () => setForm(f=>({ ...f, procedures:[...(f.procedures||[]), { id:newId(), code:"", description:"", fee:"" }] }));
+  const updateProcedureLine = (id, field, value) => setForm(f=>({ ...f, procedures:f.procedures.map(x=>x.id===id?{...x,[field]:value}:x) }));
+  const removeProcedureLine = (id) => setForm(f=>({ ...f, procedures:f.procedures.filter(x=>x.id!==id) }));
+  const saveForm = () => {
+    const hasLines = (form.procedures||[]).length>0;
+    onSave({
+      ...form,
+      production: hasLines ? proceduresTotal : form.production,
+      procedures: hasLines ? form.procedures.map(p=>({ code:p.code, description:p.description, fee:+p.fee||0 })) : [],
+    });
+  };
   return (
     <div className="dt-modal-overlay" style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000 }}>
       {viewingReceipt&&<ReceiptViewer receipt={form.receipt} onClose={()=>setViewingReceipt(false)}/>}
@@ -938,7 +1100,14 @@ const EditProductionModal = ({ entry, practices, onSave, onClose }) => {
           </Sel>
           <Input label="Date" type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} />
           <Input label="Entry name" value={form.label||form.date} onChange={e=>setForm(f=>({...f,label:e.target.value}))} placeholder="Defaults to the date — edit if you'd like to name it" />
-          <Input label="Total production ($)" type="number" value={form.production} onChange={e=>setForm(f=>({...f,production:+e.target.value}))} />
+          {(form.procedures||[]).length===0 ? (
+            <>
+              <Input label="Total production ($)" type="number" value={form.production} onChange={e=>setForm(f=>({...f,production:+e.target.value}))} />
+              <button type="button" onClick={addProcedureLine} style={{ display:"flex",alignItems:"center",gap:6,background:"none",border:"1px dashed #cbd5e1",borderRadius:8,padding:"8px 10px",fontSize:12,fontWeight:600,color:"#0F6E56",cursor:"pointer",width:"fit-content" }}>+ Break down by procedure (optional)</button>
+            </>
+          ) : (
+            <ProcedureLinesEditor lines={form.procedures} onAdd={addProcedureLine} onUpdate={updateProcedureLine} onRemove={removeProcedureLine} total={proceduresTotal} />
+          )}
           {pr?.deductsLabFees&&(
             <Input label="Lab fees ($)" type="number" value={form.labFees||0} onChange={e=>setForm(f=>({...f,labFees:+e.target.value}))} />
           )}
@@ -958,7 +1127,7 @@ const EditProductionModal = ({ entry, practices, onSave, onClose }) => {
           )}
           <div style={{ display:"flex",gap:10,justifyContent:"flex-end",marginTop:6 }}>
             <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
-            <Btn onClick={()=>onSave(form)}>Save changes</Btn>
+            <Btn onClick={saveForm}>Save changes</Btn>
           </div>
         </div>
       </Card>
@@ -1296,8 +1465,16 @@ const ProductionTab = ({ production, setProduction, practices, filterPeriod }) =
                   {entry.labFees>0&&<span style={{ fontSize:11,color:"#92400e",background:"#fef3c7",padding:"1px 6px",borderRadius:99,whiteSpace:"nowrap" }}>Lab: {fmt(entry.labFees)}</span>}
                   <Badge label={entry.source==="daysheet"?"📋 Day sheet":"Manual"} color={entry.source==="daysheet"?"teal":"gray"} />
                   {entry.isRedo&&<Badge label="🔁 Redo" color="amber" />}
+                  {entry.procedures?.length>0&&<Badge label={`🦷 ${entry.procedures.length} procedure${entry.procedures.length>1?"s":""}`} color="blue" />}
                 </div>
                 {entry.isRedo&&entry.redoNotes&&<div style={{ fontSize:12,color:"#92400e",fontStyle:"italic" }}>Redo: {entry.redoNotes}</div>}
+                {entry.procedures?.length>0&&(
+                  <div style={{ fontSize:12,color:"#64748b" }}>
+                    {entry.procedures.map((p,i)=>(
+                      <span key={i}>{i>0&&" · "}{p.code&&<strong>{p.code}</strong>}{p.code&&p.description?" — ":""}{p.description}{p.fee?` (${fmt(p.fee)})`:""}</span>
+                    ))}
+                  </div>
+                )}
                 <div style={{ display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap" }}>
                   <div style={{ fontSize:16,fontWeight:700,color:"#1e293b",whiteSpace:"nowrap" }}>{fmt(entry.production)}</div>
                   <div style={{ display:"flex",gap:6,flexShrink:0,flexWrap:"wrap" }}>

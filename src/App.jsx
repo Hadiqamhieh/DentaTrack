@@ -739,11 +739,15 @@ const LogModal = ({ practices, onSave, onClose }) => {
   return (
     <div className="dt-modal-overlay" style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000 }}>
       {showScan&&<ScanModal title="Scan Day Sheet"
-        prompt="Read a dental day sheet / production report. Extract: date (YYYY-MM-DD), total_production (number), total_collection (number if visible), total_lab_fees (number if visible)."
+        prompt="Read a dental day sheet / production report. Extract: date (YYYY-MM-DD), total_production (number), total_collection (number if visible), total_lab_fees (number if visible), and procedures — an array of {code, description, fee} for each individual procedure line item visible (leave code blank if the sheet doesn't show one, but still include description and fee). Do not include any patient names or other patient-identifying information anywhere in your response, even if visible on the sheet — describe only the procedure itself."
         onClose={()=>setShowScan(false)}
         onResult={(r, img)=>{
           if(r.date){ setDate(r.date); if(!labelTouched) setLabel(r.date); }
-          if(r.total_production!=null) setAmount(String(r.total_production));
+          if(Array.isArray(r.procedures) && r.procedures.length>0) {
+            setProcedures(r.procedures.map(p=>({ id:newId(), code:p.code||"", description:p.description||"", fee:p.fee!=null?String(p.fee):"" })));
+          } else if(r.total_production!=null) {
+            setAmount(String(r.total_production));
+          }
           if(r.total_lab_fees!=null) setLabFees(String(r.total_lab_fees));
           setReceiptImg(img || null);
           setMode("manual");

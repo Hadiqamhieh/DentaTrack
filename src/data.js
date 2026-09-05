@@ -106,6 +106,9 @@ export async function loadProduction(userId) {
     id: r.id, date: r.date, production: Number(r.production), labFees: Number(r.lab_fees),
     source: r.source, practiceId: r.practice_id, receipt: r.receipt, label: r.label,
     isRedo: r.is_redo || false, redoNotes: r.redo_notes || '',
+    // Reserved for a future multi-line procedure editor (CDT / fee-guide
+    // codes) — not yet populated by any UI, just carried through untouched.
+    procedures: r.procedures || [],
   }));
 }
 
@@ -114,6 +117,7 @@ export async function syncProduction(userId, production) {
     id: r.id, user_id: userId, date: r.date, production: r.production, lab_fees: r.labFees,
     source: r.source, practice_id: r.practiceId, receipt: r.receipt || null, label: r.label || null,
     is_redo: r.isRedo || false, redo_notes: r.redoNotes || null,
+    procedures: r.procedures && r.procedures.length ? r.procedures : null,
   }));
   await replaceAll('production', userId, rows);
 }

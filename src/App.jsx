@@ -634,7 +634,10 @@ const LogModal = ({ practices, onSave, onClose }) => {
               <ToggleRow checked={isRedo} onChange={setIsRedo} icon="🔁" label="This includes a redo"
                 sub="Redoing or remaking a prior procedure, usually at no charge to the patient" />
               {isRedo&&(
-                <Input label="What's being redone (optional)" value={redoNotes} onChange={e=>setRedoNotes(e.target.value)} placeholder="e.g. crown remake, tooth #14" />
+                <div>
+                  <Input label="What's being redone (optional)" value={redoNotes} onChange={e=>setRedoNotes(e.target.value)} placeholder="e.g. crown remake, tooth #14" />
+                  <div style={{ fontSize:11,color:"#94a3b8",marginTop:4 }}>Describe the procedure, not the patient — leave out names or other identifying details.</div>
+                </div>
               )}
               <Btn size="lg" onClick={save} style={{ justifyContent:"center", marginTop:6 }}>Save</Btn>
             </>
@@ -942,7 +945,10 @@ const EditProductionModal = ({ entry, practices, onSave, onClose }) => {
           <ToggleRow checked={!!form.isRedo} onChange={v=>setForm(f=>({...f,isRedo:v}))} icon="🔁" label="This includes a redo"
             sub="Redoing or remaking a prior procedure, usually at no charge to the patient" />
           {form.isRedo&&(
-            <Input label="What's being redone (optional)" value={form.redoNotes||""} onChange={e=>setForm(f=>({...f,redoNotes:e.target.value}))} placeholder="e.g. crown remake, tooth #14" />
+            <div>
+              <Input label="What's being redone (optional)" value={form.redoNotes||""} onChange={e=>setForm(f=>({...f,redoNotes:e.target.value}))} placeholder="e.g. crown remake, tooth #14" />
+              <div style={{ fontSize:11,color:"#94a3b8",marginTop:4 }}>Describe the procedure, not the patient — leave out names or other identifying details.</div>
+            </div>
           )}
           {form.receipt&&(
             <div>

@@ -155,6 +155,68 @@ function deductibleAmount(b) {
   return (b.type === "business" && b.taxDeductible) ? Math.abs(b.amount) * (b.deductibleFraction ?? 1) : 0;
 }
 
+// ── Global period filter (Home / Production / Transactions) ────────────────
+const PERIOD_LABELS = { day: "Day", week: "Week", month: "Month", year: "Year" };
+const PERIOD_BUCKET_COUNTS = { day: 7, week: 8, month: 6, year: 5 };
+
+// The current window for a given granularity — e.g. "month" means the
+// calendar month containing refDate, not a rolling 30 days.
+function periodRange(period, refDate = new Date()) {
+  const d = new Date(refDate);
+  d.setHours(0, 0, 0, 0);
+  if (period === "day") {
+    const start = new Date(d);
+    const end = new Date(d); end.setDate(end.getDate() + 1);
+    return { start, end };
+  }
+  if (period === "week") {
+    const start = new Date(d); start.setDate(d.getDate() - d.getDay());
+    const end = new Date(start); end.setDate(start.getDate() + 7);
+    return { start, end };
+  }
+  if (period === "year") {
+    return { start: new Date(d.getFullYear(), 0, 1), end: new Date(d.getFullYear() + 1, 0, 1) };
+  }
+  return { start: new Date(d.getFullYear(), d.getMonth(), 1), end: new Date(d.getFullYear(), d.getMonth() + 1, 1) };
+}
+
+function dateInRange(dateStr, range) {
+  const t = new Date(dateStr + "T00:00:00").getTime();
+  return t >= range.start.getTime() && t < range.end.getTime();
+}
+
+// Trailing windows ending at the current period, sized per granularity, for
+// the Financial performance chart — the last bucket always lines up with
+// whatever the stat cards above are currently showing.
+function periodBuckets(period, count, refDate = new Date()) {
+  const buckets = [];
+  for (let i = count - 1; i >= 0; i--) {
+    const d = new Date(refDate);
+    if (period === "day") d.setDate(d.getDate() - i);
+    else if (period === "week") d.setDate(d.getDate() - i * 7);
+    else if (period === "year") d.setFullYear(d.getFullYear() - i);
+    else d.setMonth(d.getMonth() - i);
+    const range = periodRange(period, d);
+    let label;
+    if (period === "day") label = range.start.toLocaleDateString(undefined, { weekday: "short" });
+    else if (period === "week") label = range.start.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    else if (period === "year") label = String(range.start.getFullYear());
+    else label = range.start.toLocaleDateString(undefined, { month: "short" });
+    buckets.push({ label, ...range });
+  }
+  return buckets;
+}
+
+// Shared by the Expected pay stat card and each Financial performance chart
+// bucket — same math, just fed a different (possibly narrower) time slice.
+function computeExpectedPay(practices, production, banks) {
+  return practices.reduce((sum, pr) => {
+    const prDeps = banks.filter(b => b.type === "collection" && b.practiceId === pr.id).reduce((s, b) => s + b.amount, 0);
+    const prLab = pr.deductsLabFees ? production.filter(r => r.practiceId === pr.id).reduce((s, r) => s + (r.labFees || 0), 0) : 0;
+    return sum + Math.max(0, prDeps - prLab) * (pr.pct / 100);
+  }, 0);
+}
+
 
 const RULES_KEY = "dt_bank_rules_v2";
 
@@ -858,7 +920,27 @@ const EditProductionModal = ({ entry, practices, onSave, onClose }) => {
   );
 };
 
-const HomeTab = ({ production, expenses, banks, agreement, matches, practices, collectionsSummary, connectedAccounts, setConnectedAccounts, onTransactionsSynced, setTab, goToTransactions }) => {
+// ── Global filter bar — shared by Home, Production, and Transactions ───────
+const FilterBar = ({ period, setPeriod, practiceId, setPracticeId, practices }) => (
+  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 18 }}>
+    <div style={{ display: "flex", gap: 2, background: "#f1f5f9", borderRadius: 10, padding: 3 }}>
+      {["day", "week", "month", "year"].map(p => (
+        <button key={p} onClick={() => setPeriod(p)} style={{ padding: "7px 14px", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: "pointer", background: period === p ? "#fff" : "transparent", color: period === p ? "#0F6E56" : "#64748b", boxShadow: period === p ? "0 1px 3px rgba(0,0,0,0.1)" : "none" }}>
+          {PERIOD_LABELS[p]}
+        </button>
+      ))}
+    </div>
+    {practices.length > 0 && (
+      <select value={practiceId || "all"} onChange={e => setPracticeId(e.target.value === "all" ? null : e.target.value)}
+        style={{ padding: "8px 12px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 13, color: "#1e293b", background: "#fff" }}>
+        <option value="all">All practices</option>
+        {practices.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+      </select>
+    )}
+  </div>
+);
+
+const HomeTab = ({ production, expenses, banks, chartProduction, chartBanks, filterPeriod, agreement, matches, practices, collectionsSummary, connectedAccounts, setConnectedAccounts, onTransactionsSynced, setTab, goToTransactions }) => {
   const [showEmail, setShowEmail] = useState(false);
   const [showTax, setShowTax]     = useState(false);
   const [showPlaid, setShowPlaid] = useState(false);
@@ -893,14 +975,31 @@ const HomeTab = ({ production, expenses, banks, agreement, matches, practices, c
 
   const totalProd   = production.reduce((s,r)=>s+r.production,0);
   const totalExp    = banks.reduce((s,b)=>s+deductibleAmount(b),0);
+  const businessExp = banks.filter(b=>b.type==="business").reduce((s,b)=>s+Math.abs(b.amount),0);
   const deposits    = banks.filter(b=>b.type==="collection").reduce((s,b)=>s+b.amount,0);
-  const expectedPay = practices.reduce((sum,pr)=>{
-    const prDeps = banks.filter(b=>b.type==="collection"&&b.practiceId===pr.id).reduce((s,b)=>s+b.amount,0);
-    const prLab  = pr.deductsLabFees ? production.filter(r=>r.practiceId===pr.id).reduce((s,r)=>s+(r.labFees||0),0) : 0;
-    return sum + Math.max(0, prDeps - prLab) * (pr.pct/100);
-  },0);
+  const collectionRate = totalProd>0 ? (deposits/totalProd)*100 : null;
+  const expectedPay = computeExpectedPay(practices, production, banks);
   const variance = deposits>0 ? (deposits - expectedPay) : 0;
   const net = expectedPay - totalExp;
+
+  // Financial performance chart — trailing buckets sized to the selected
+  // global filter granularity, built from practice-filtered but NOT
+  // period-filtered data so the chart always shows real history regardless
+  // of which single period the stat cards above are currently zoomed to.
+  const perfBuckets = periodBuckets(filterPeriod, PERIOD_BUCKET_COUNTS[filterPeriod] || 6);
+  const perfSeries = perfBuckets.map(b => {
+    const bucketProd  = (chartProduction||[]).filter(r=>dateInRange(r.date,b));
+    const bucketBanks = (chartBanks||[]).filter(x=>dateInRange(x.date,b));
+    return {
+      label: b.label,
+      production: bucketProd.reduce((s,r)=>s+r.production,0),
+      collection: bucketBanks.filter(x=>x.type==="collection").reduce((s,x)=>s+x.amount,0),
+      expectedPay: computeExpectedPay(practices, bucketProd, bucketBanks),
+      expenses: bucketBanks.reduce((s,x)=>s+deductibleAmount(x),0),
+    };
+  });
+  const perfMax = Math.max(1, ...perfSeries.flatMap(s=>[s.production,s.collection,s.expectedPay,s.expenses]));
+  const PERF_SERIES_META = [["production","Production","#0F6E56"],["collection","Collection","#1e40af"],["expectedPay","Expected pay","#a855f7"],["expenses","Expenses","#f97316"]];
 
   const practiceBreakdown = practices.map(pr=>{
     const prDeps = banks.filter(b=>b.type==="collection"&&b.practiceId===pr.id).reduce((s,b)=>s+b.amount,0);
@@ -926,10 +1025,6 @@ const HomeTab = ({ production, expenses, banks, agreement, matches, practices, c
   const matchedBankIds = new Set(matches.map(m=>m.bankId));
   const pendingExp     = expenses.filter(e=>e.taxDeductible&&!matchedExpIds.has(e.id));
   const missingReceipt = banks.filter(b=>b.amount<0&&b.type!=="personal"&&!matchedBankIds.has(b.id));
-
-  const months = ["Jan","Feb","Mar","Apr","May","Jun"];
-  const bars   = [38000,44200,51000,47800,56300,totalProd];
-  const barMax = Math.max(...bars);
 
   return (
     <div style={{ display:"flex",flexDirection:"column",gap:20 }}>
@@ -1003,13 +1098,17 @@ const HomeTab = ({ production, expenses, banks, agreement, matches, practices, c
 
       {/* Stat cards */}
       <div style={{ display:"flex",gap:14,flexWrap:"wrap" }}>
-        <StatCard label="Total production"   value={fmt(totalProd)}   sub={"across "+practices.length+" practices"} color="#1e293b"
+        <StatCard label="Production"         value={fmt(totalProd)}   sub={"across "+practices.length+" practices"} color="#1e293b"
           onClick={()=>setTab?.("production")} />
-        <StatCard label="Collections"        value={fmt(deposits)}    sub={deposits>0&&totalProd>0 ? pct(deposits,totalProd)+" implied rate" : "bank deposits received"} color="#1e293b"
+        <StatCard label="Collection"         value={fmt(deposits)}    sub={deposits>0&&totalProd>0 ? pct(deposits,totalProd)+" of production" : "bank deposits received"} color="#1e293b"
           onClick={()=>goToTransactions?.("feed","collection")} />
         <StatCard label="Expected pay"       value={fmt(expectedPay)} sub="based on deposits"                       color="#1e293b"
           onClick={()=>goToTransactions?.("reconcile")} />
-        <StatCard label="Deductibles"        value={fmt(totalExp)}    sub={matches.length+" receipts matched"}       color="#1e293b"
+        <StatCard label="Collection rate"    value={collectionRate!==null?collectionRate.toFixed(0)+"%":"—"} sub="deposits ÷ production" color="#1e293b"
+          onClick={()=>goToTransactions?.("reconcile")} />
+        <StatCard label="Business expenses"  value={fmt(businessExp)} sub={matches.length+" receipts matched"}       color="#1e293b"
+          onClick={()=>goToTransactions?.("feed")} />
+        <StatCard label="Tax deductibles"    value={fmt(totalExp)}    sub="deductible this period"                   color="#1e293b"
           onClick={()=>goToTransactions?.("deductibles")} />
       </div>
 
@@ -1041,15 +1140,25 @@ const HomeTab = ({ production, expenses, banks, agreement, matches, practices, c
         })}
       </div>
 
-      {/* Monthly trend chart */}
+      {/* Financial performance chart */}
       <Card>
-        <div style={{ fontSize:14,fontWeight:600,color:"#1e293b",marginBottom:16 }}>Monthly production</div>
-        <div style={{ display:"flex",alignItems:"flex-end",gap:10,height:110 }}>
-          {bars.map((v,i)=>(
-            <div key={i} style={{ flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4 }}>
-              <div style={{ fontSize:10,color:"#94a3b8" }}>{i===5?fmt(v).replace("CA$","$"):""}</div>
-              <div style={{ width:"100%",background:i===5?"#0F6E56":"#e2e8f0",borderRadius:"4px 4px 0 0",height:(v/barMax)*86 }} />
-              <div style={{ fontSize:11,color:"#94a3b8" }}>{months[i]}</div>
+        <div style={{ fontSize:14,fontWeight:600,color:"#1e293b",marginBottom:4 }}>Financial performance</div>
+        <div style={{ display:"flex",gap:14,flexWrap:"wrap",margin:"10px 0 16px" }}>
+          {PERF_SERIES_META.map(([key,label,color])=>(
+            <div key={key} style={{ display:"flex",alignItems:"center",gap:6,fontSize:11,color:"#64748b" }}>
+              <div style={{ width:8,height:8,borderRadius:2,background:color }} />{label}
+            </div>
+          ))}
+        </div>
+        <div style={{ display:"flex",alignItems:"flex-end",gap:16,height:130 }}>
+          {perfSeries.map((s,i)=>(
+            <div key={i} style={{ flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:6,minWidth:0 }}>
+              <div style={{ display:"flex",alignItems:"flex-end",gap:3,height:100,width:"100%",justifyContent:"center" }}>
+                {PERF_SERIES_META.map(([key,label,color])=>(
+                  <div key={key} title={`${label}: ${fmt(s[key])}`} style={{ width:8,background:color,borderRadius:"3px 3px 0 0",height:Math.max(2,(s[key]/perfMax)*94) }} />
+                ))}
+              </div>
+              <div style={{ fontSize:10,color:"#94a3b8" }}>{s.label}</div>
             </div>
           ))}
         </div>
@@ -1080,7 +1189,7 @@ const HomeTab = ({ production, expenses, banks, agreement, matches, practices, c
 };
 
 // ── Production Tab ─────────────────────────────────────────────────────────────
-const ProductionTab = ({ production, setProduction, practices }) => {
+const ProductionTab = ({ production, setProduction, practices, filterPeriod }) => {
   const [showLog, setShowLog]     = useState(false);
   const [editEntry, setEditEntry] = useState(null);
   const [viewingReceipt, setViewingReceipt] = useState(null);
@@ -1113,7 +1222,7 @@ const ProductionTab = ({ production, setProduction, practices }) => {
       <Card style={{ padding:0,overflow:"hidden" }}>
         <div style={{ padding:"14px 20px",borderBottom:"1px solid #f1f5f9",display:"flex",justifyContent:"space-between",alignItems:"center" }}>
           <div style={{ fontSize:14,fontWeight:600,color:"#1e293b" }}>Production log</div>
-          <div style={{ fontSize:12,color:"#94a3b8" }}>{production.length} entries this month</div>
+          <div style={{ fontSize:12,color:"#94a3b8" }}>{production.length} entries this {(PERIOD_LABELS[filterPeriod]||"Month").toLowerCase()}</div>
         </div>
         {production.length===0 ? (
           <div style={{ padding:"40px 20px",textAlign:"center",color:"#94a3b8",fontSize:13 }}>
@@ -1360,7 +1469,7 @@ const ManualExpenseModal = ({ agreement, onSave, onClose }) => {
   );
 };
 
-const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agreement, matches, practices, production, bankRules, addRule, duplicateIds, connectedAccounts, isMobile, sub, setSub, typeFilter, setTypeFilter }) => {
+const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agreement, matches, practices, production, bankRules, addRule, duplicateIds, connectedAccounts, isMobile, sub, setSub, typeFilter, setTypeFilter, globalPeriod, globalPracticeId }) => {
   const [pendingRule, setPendingRule]     = useState(null);
   const [expandedId, setExpandedId]       = useState(null);
   const [scanningFor, setScanningFor]     = useState(null); // bankId to attach receipt to
@@ -1414,7 +1523,16 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
     return new Date(+y, +m-1, 1).toLocaleDateString(undefined,{ month:"long", year:"numeric" });
   };
 
-  const filteredBanks = banks.filter(b=>
+  // Global Day/Week/Month/Year + practice filter, layered on top of this
+  // tab's own month/account filters (which stay independent, per the note
+  // on availableMonths above — the global filter narrows first).
+  const globalRange = periodRange(globalPeriod);
+  const matchesGlobal = (row) => (!globalPracticeId || row.practiceId===globalPracticeId) && dateInRange(row.date, globalRange);
+  const globalBanks = banks.filter(matchesGlobal);
+  const globalProduction = production.filter(matchesGlobal);
+  const globalPractices = globalPracticeId ? practices.filter(p=>p.id===globalPracticeId) : practices;
+
+  const filteredBanks = globalBanks.filter(b=>
     (monthFilter==="all" || b.date.slice(0,7)===monthFilter) &&
     (accountFilter==="all" || (accountFilter==="manual" ? !b.plaidAccountId : b.plaidAccountId===accountFilter))
   );
@@ -1960,10 +2078,10 @@ const TransactionsTab = ({ expenses, setExpenses, banks, setBanks, tagBank, agre
           <div style={{ background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:10,padding:"12px 16px",fontSize:12,color:"#166634" }}>
             <strong>How reconciliation works:</strong> Your production is logged from day sheets. Collections are deposits tagged to each practice from the bank feed. The implied collection rate (deposits ÷ production) should be stable month over month — a significant drop is a signal to request a collections statement from the practice.
           </div>
-          {practices.map(pr=>{
-            const prProd  = production.filter(r=>r.practiceId===pr.id).reduce((s,r)=>s+r.production,0);
-            const prDeps  = banks.filter(b=>b.type==="collection"&&b.practiceId===pr.id).reduce((s,b)=>s+b.amount,0);
-            const prLab   = pr.deductsLabFees ? production.filter(r=>r.practiceId===pr.id).reduce((s,r)=>s+(r.labFees||0),0) : 0;
+          {globalPractices.map(pr=>{
+            const prProd  = globalProduction.filter(r=>r.practiceId===pr.id).reduce((s,r)=>s+r.production,0);
+            const prDeps  = globalBanks.filter(b=>b.type==="collection"&&b.practiceId===pr.id).reduce((s,b)=>s+b.amount,0);
+            const prLab   = pr.deductsLabFees ? globalProduction.filter(r=>r.practiceId===pr.id).reduce((s,r)=>s+(r.labFees||0),0) : 0;
             const prExpPay= Math.max(0, prDeps - prLab) * (pr.pct/100);
             const rate    = prProd>0 ? (prDeps/prProd)*100 : null;
             const rateLow = rate!==null && rate < 70;
@@ -2883,6 +3001,10 @@ export default function App() {
   const [practices, setPractices]   = useState([]);
   const [agreement, setAgreement]   = useState({ isCorp:false,salary:0,dividends:0,name:"",corpName:"",tourCompleted:true });
   const [connectedAccounts, setConnectedAccounts] = useState([]);
+  // Global Day/Week/Month/Year + practice filter, shared by Home, Production,
+  // and Transactions.
+  const [filterPeriod, setFilterPeriod] = useState("month");
+  const [filterPracticeId, setFilterPracticeId] = useState(null);
   // Bumped on every connectedAccounts change so an in-flight save from an
   // older, stale snapshot can tell it's been superseded and skip its own
   // delete step — otherwise a slow older save finishing after a newer one
@@ -3079,10 +3201,25 @@ export default function App() {
   const matches     = buildMatches(expenses, smartBanks);
   const duplicateIds = detectDuplicates(smartBanks);
 
-  // Collections summary per practice
-  const collectionsSummary = practices.map(pr => {
-    const prDeposits = smartBanks.filter(b=>b.type==="collection"&&b.practiceId===pr.id).reduce((s,b)=>s+b.amount,0);
-    const prProd     = production.filter(r=>r.practiceId===pr.id).reduce((s,r)=>s+r.production,0);
+  // Global Day/Week/Month/Year + practice filter — feeds Home, Production,
+  // and Transactions. `filteredX` is scoped to the current single period
+  // (e.g. this calendar month) and the selected practice, if any — used for
+  // stat cards and the Production log. `practiceFilteredX` only narrows by
+  // practice, keeping full history — used for the Home chart's trailing
+  // buckets, which need real history regardless of which period is selected.
+  const currentPeriodRange = periodRange(filterPeriod);
+  const matchesPractice = (practiceId) => !filterPracticeId || practiceId === filterPracticeId;
+  const practiceFilteredProduction = production.filter(r => matchesPractice(r.practiceId));
+  const practiceFilteredBanks = smartBanks.filter(b => matchesPractice(b.practiceId));
+  const filteredProduction = practiceFilteredProduction.filter(r => dateInRange(r.date, currentPeriodRange));
+  const filteredBanks = practiceFilteredBanks.filter(b => dateInRange(b.date, currentPeriodRange));
+
+  // Collections summary per practice — respects the global filter above, and
+  // narrows to just the selected practice's card when one is chosen.
+  const visiblePractices = filterPracticeId ? practices.filter(p=>p.id===filterPracticeId) : practices;
+  const collectionsSummary = visiblePractices.map(pr => {
+    const prDeposits = filteredBanks.filter(b=>b.type==="collection"&&b.practiceId===pr.id).reduce((s,b)=>s+b.amount,0);
+    const prProd     = filteredProduction.filter(r=>r.practiceId===pr.id).reduce((s,r)=>s+r.production,0);
     const rate       = prProd>0 ? (prDeposits/prProd)*100 : null;
     return { pr, deposits:prDeposits, production:prProd, rate };
   });
@@ -3233,15 +3370,18 @@ export default function App() {
             {tab==="home"?"Home":tab==="production"?"Production":tab==="transactions"?"Transactions":"Settings"}
           </div>
           <div style={{ fontSize:13,color:"#94a3b8",marginTop:2 }}>
-            {tab==="home"&&"Your financial snapshot for the month"}
+            {tab==="home"&&"Your financial snapshot"}
             {tab==="production"&&"Log production and review your daily entries"}
             {tab==="transactions"&&"Expenses, bank feed, and reconciliation"}
             {tab==="settings"&&"Profile, practices, and corp settings"}
           </div>
         </div>
-        {tab==="home"         &&<HomeTab         production={production} expenses={expenses} banks={smartBanks} agreement={agreement} matches={matches} practices={practices} isMobile={isMobile} collectionsSummary={collectionsSummary} connectedAccounts={connectedAccounts} setConnectedAccounts={setConnectedAccounts} onTransactionsSynced={mergeSyncedTransactions} setTab={setTab} goToTransactions={goToTransactions}/>}
-        {tab==="production"   &&<ProductionTab   production={production} setProduction={setProduction} practices={practices}/>}
-        {tab==="transactions" &&<TransactionsTab expenses={expenses} setExpenses={setExpenses} banks={smartBanks} setBanks={setBanks} tagBank={tagBank} agreement={agreement} matches={matches} practices={practices} production={production} isMobile={isMobile} bankRules={bankRules} addRule={addRule} duplicateIds={duplicateIds} connectedAccounts={connectedAccounts} sub={txSub} setSub={setTxSub} typeFilter={txTypeFilter} setTypeFilter={setTxTypeFilter}/>}
+        {(tab==="home"||tab==="production"||tab==="transactions")&&(
+          <FilterBar period={filterPeriod} setPeriod={setFilterPeriod} practiceId={filterPracticeId} setPracticeId={setFilterPracticeId} practices={practices}/>
+        )}
+        {tab==="home"         &&<HomeTab         production={filteredProduction} expenses={expenses} banks={filteredBanks} chartProduction={practiceFilteredProduction} chartBanks={practiceFilteredBanks} filterPeriod={filterPeriod} agreement={agreement} matches={matches} practices={practices} isMobile={isMobile} collectionsSummary={collectionsSummary} connectedAccounts={connectedAccounts} setConnectedAccounts={setConnectedAccounts} onTransactionsSynced={mergeSyncedTransactions} setTab={setTab} goToTransactions={goToTransactions}/>}
+        {tab==="production"   &&<ProductionTab   production={filteredProduction} setProduction={setProduction} practices={practices} filterPeriod={filterPeriod}/>}
+        {tab==="transactions" &&<TransactionsTab expenses={expenses} setExpenses={setExpenses} banks={smartBanks} setBanks={setBanks} tagBank={tagBank} agreement={agreement} matches={matches} practices={practices} production={production} isMobile={isMobile} bankRules={bankRules} addRule={addRule} duplicateIds={duplicateIds} connectedAccounts={connectedAccounts} sub={txSub} setSub={setTxSub} typeFilter={txTypeFilter} setTypeFilter={setTxTypeFilter} globalPeriod={filterPeriod} globalPracticeId={filterPracticeId}/>}
         {tab==="settings"     &&<SettingsTab     agreement={agreement} setAgreement={setAgreement} practices={practices} setPractices={setPractices} isMobile={isMobile} connectedAccounts={connectedAccounts} setConnectedAccounts={setConnectedAccounts} setBanks={setBanks} activeSection={settingsSection} bankRules={bankRules} addRule={addRule} updateRule={updateRule} deleteRule={deleteRule}/>}
       </div>
 
